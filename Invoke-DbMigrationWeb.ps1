@@ -3,7 +3,9 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$')][string] $HostName,
     [Parameter()][ValidateRange(1, 65535)][int] $Port = 8443,
     [Parameter()][string] $ConfigPath = (Join-Path $PSScriptRoot 'config\migration.config.json'),
-    [Parameter()][string] $StatePath = (Join-Path $PSScriptRoot 'MigrationState.json')
+    [Parameter()][string] $StatePath = (Join-Path $PSScriptRoot 'MigrationState.json'),
+    [Parameter()][switch] $PortableMode,
+    [Parameter()][string] $AppRoot = $PSScriptRoot
 )
 
 Set-StrictMode -Version Latest
@@ -12,8 +14,10 @@ $ErrorActionPreference = 'Stop'
 if ($PSVersionTable.PSVersion -lt [Version]'7.2') {
     throw 'PowerShell 7.2 or later is required.'
 }
+Import-Module (Join-Path $PSScriptRoot 'src\DbMigration.WebAuth.psm1') -Force
+$storage = Resolve-MigrationWebStoragePaths -AppRoot $AppRoot -PortableMode:$PortableMode
 $fullConfigPath = [System.IO.Path]::GetFullPath($ConfigPath)
-$fullAuthPath = Join-Path $env:ProgramData 'DbMigrationWeb\auth.json'
+$fullAuthPath = $storage.AuthPath
 $fullStatePath = [System.IO.Path]::GetFullPath($StatePath)
 foreach ($path in @($fullConfigPath, $fullAuthPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
@@ -104,7 +108,9 @@ namespace DbMigration.Web
 
 $script:HostName = $HostName.ToLowerInvariant()
 $script:Port = $Port
-$script:Origin = if ($Port -eq 443) { "https://$($script:HostName)" } else { "https://$($script:HostName):$Port" }
+$script:PortableMode = [bool]$PortableMode
+$script:UseSecureTransport = -not $script:PortableMode
+$script:Origin = if ($script:PortableMode) { "http://$($script:HostName):$Port" } elseif ($Port -eq 443) { "https://$($script:HostName)" } else { "https://$($script:HostName):$Port" }
 $script:Listener = [System.Net.HttpListener]::new()
 $script:Listener.Prefixes.Add("$($script:Origin)/")
 $script:Sessions = @{}
@@ -119,7 +125,7 @@ $script:ProcessOutputQueue = [System.Collections.Concurrent.ConcurrentQueue[DbMi
 $script:ProcessOutputHandler = $null
 $script:NextEventId = 1
 $script:RunId = $null
-$script:HostLogDirectory = Join-Path $env:LOCALAPPDATA 'DbMigrationWeb\Logs'
+$script:HostLogDirectory = if ($script:PortableMode) { $storage.LogDirectory } else { Join-Path $env:LOCALAPPDATA 'DbMigrationWeb\Logs' }
 $script:HostLogPath = Join-Path $script:HostLogDirectory "WebHost-$(Get-Date -Format 'yyyyMMdd-HHmmss-fff').log"
 $null = New-Item -ItemType Directory -Path $script:HostLogDirectory -Force -ErrorAction Stop
 
@@ -190,7 +196,9 @@ function Send-WebResponse {
     $Response.Headers['X-Content-Type-Options'] = 'nosniff'
     $Response.Headers['X-Frame-Options'] = 'DENY'
     $Response.Headers['Referrer-Policy'] = 'no-referrer'
-    $Response.Headers['Strict-Transport-Security'] = 'max-age=31536000'
+    if ($script:UseSecureTransport) {
+        $Response.Headers['Strict-Transport-Security'] = 'max-age=31536000'
+    }
     $Response.Headers['Content-Security-Policy'] = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"
     $Response.Headers['Cache-Control'] = 'no-store'
     $Response.OutputStream.Write($Body, 0, $Body.Length)
@@ -258,11 +266,12 @@ function Set-WebSessionCookie {
         [Parameter(Mandatory)][System.Net.HttpListenerResponse] $Response,
         [Parameter()][string] $Token = ''
     )
+    $secureSuffix = if ($script:UseSecureTransport) { '; Secure' } else { '' }
     if ($Token) {
-        $Response.AppendHeader('Set-Cookie', "DbMigrationSession=$Token; Path=/; Secure; HttpOnly; SameSite=Strict")
+        $Response.AppendHeader('Set-Cookie', "DbMigrationSession=$Token; Path=/; HttpOnly; SameSite=Strict$secureSuffix")
     }
     else {
-        $Response.AppendHeader('Set-Cookie', 'DbMigrationSession=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Strict')
+        $Response.AppendHeader('Set-Cookie', "DbMigrationSession=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict$secureSuffix")
     }
 }
 
@@ -680,7 +689,20 @@ try {
                 Send-WebResponse -Response $response -StatusCode 200 -ContentType 'text/html; charset=utf-8' -Body $bytes
                 continue
             }
-            if (-not $request.IsSecureConnection) {
+            if (-not $script:UseSecureTransport -and -not $request.IsSecureConnection) {
+                $localAddress = [string]$request.LocalEndPoint.Address
+                $requestIsAllowed = $request.Url.Scheme -eq 'http' -and (
+                    $localAddress -eq '127.0.0.1' -or
+                    $localAddress -eq '::1' -or
+                    $localAddress.StartsWith('127.') -or
+                    $localAddress.StartsWith('::1')
+                )
+                if (-not $requestIsAllowed) {
+                    Send-WebJson -Response $response -StatusCode 400 -Value @{ error = 'In portable mode, only local HTTP is supported.' }
+                    continue
+                }
+            }
+            elseif (-not $request.IsSecureConnection) {
                 Send-WebJson -Response $response -StatusCode 400 -Value @{ error = 'HTTPS is required.' }
                 continue
             }

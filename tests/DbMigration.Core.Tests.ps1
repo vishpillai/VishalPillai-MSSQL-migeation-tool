@@ -25,6 +25,16 @@ Describe 'Migration web authentication' {
     }
 }
 
+Describe 'Portable web storage paths' {
+    It 'stores portable auth files under the app folder instead of ProgramData' {
+        $storage = Resolve-MigrationWebStoragePaths -AppRoot $TestDrive -PortableMode
+
+        $storage.IsPortable | Should -BeTrue
+        $storage.AuthPath | Should -Be (Join-Path $TestDrive 'portable\auth\auth.json')
+        $storage.LogDirectory | Should -Be (Join-Path $TestDrive 'portable\logs')
+    }
+}
+
 Describe 'Migration configuration' {
     It 'loads a valid configuration and defaults exclusions and statistics' {
         $path = Join-Path $TestDrive 'migration.json'

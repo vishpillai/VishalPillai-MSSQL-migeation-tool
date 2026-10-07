@@ -109,7 +109,29 @@ Copied SQL Agent jobs are disabled on the target to prevent them from running be
 
 Important: the GUI intentionally uses the first configured source/target pair from the config and runs the same migration logic as the command-line script.
 
-## 6. Run the network browser interface
+## 6. Run the browser interface
+
+There are two supported browser modes:
+
+- Server-hosted HTTPS mode for network deployment on a Windows migration server.
+- Portable local mode for a single workstation or USB-style deployment without admin privileges.
+
+### Portable local mode
+
+For a local, portable run without machine-level HTTPS registration, use the launcher script:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\Start-PortableDbMigrationWeb.ps1
+```
+
+This starts the app on a loopback address such as `http://localhost:9080/` or the next available free local port. It stores auth and logs under the project folder (`portable\auth\auth.json` and `portable\logs`). The default portable credentials are:
+
+- Username: `migration-admin`
+- Password: `MigrationAdmin123!`
+
+The launcher automatically creates the authentication file on first run if it is missing.
+
+### Server-hosted HTTPS mode
 
 The browser interface can be used by authorized users on the network while the PowerShell host runs on a Windows migration server. Source, target, and shared backup paths are entered in the browser. Run the following HTTPS setup once with administrative rights, using a DNS name covered by a valid certificate installed in `LocalMachine\My`:
 

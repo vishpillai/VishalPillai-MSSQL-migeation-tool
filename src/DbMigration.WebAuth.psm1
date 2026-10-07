@@ -89,4 +89,36 @@ function Test-MigrationWebPassword {
     return ($passwordMatches -and $usernameMatches)
 }
 
-Export-ModuleMember -Function New-MigrationWebPasswordRecord, Test-MigrationWebPassword
+function Resolve-MigrationWebStoragePaths {
+    [CmdletBinding()]
+    param(
+        [Parameter()][string] $AppRoot,
+        [Parameter()][switch] $PortableMode
+    )
+
+    $resolvedAppRoot = if ([string]::IsNullOrWhiteSpace($AppRoot)) {
+        [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+    }
+    else {
+        [System.IO.Path]::GetFullPath($AppRoot)
+    }
+
+    if ($PortableMode) {
+        $authDirectory = Join-Path $resolvedAppRoot 'portable\auth'
+        $logDirectory = Join-Path $resolvedAppRoot 'portable\logs'
+    }
+    else {
+        $authDirectory = Join-Path ([System.Environment]::GetFolderPath('CommonApplicationData')) 'DbMigrationWeb'
+        $logDirectory = Join-Path ([System.Environment]::GetFolderPath('LocalApplicationData')) 'DbMigrationWeb\Logs'
+    }
+
+    [pscustomobject]@{
+        AppRoot = $resolvedAppRoot
+        AuthDirectory = $authDirectory
+        AuthPath = Join-Path $authDirectory 'auth.json'
+        LogDirectory = $logDirectory
+        IsPortable = [bool]$PortableMode
+    }
+}
+
+Export-ModuleMember -Function New-MigrationWebPasswordRecord, Test-MigrationWebPassword, Resolve-MigrationWebStoragePaths

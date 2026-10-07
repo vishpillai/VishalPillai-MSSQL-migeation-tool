@@ -74,9 +74,17 @@ For a network-accessible browser interface, see [Network browser interface](#net
 
 The GUI starts with the first source/target pair from the configuration. Enter or edit the instances and backup path, discover databases, then check the databases and server-level objects to migrate. It runs the same migration script and writes its normal reports and state file. During migration, a live progress panel reports per-database backup, restore, capacity, post-migration, and final outcome events, plus server-object copy results and errors; the detailed log remains available alongside the summary. If a selected database already exists on the target, the GUI asks whether to replace it; Yes authorizes replacement of that database, while No records it as skipped and leaves the target unchanged. The GUI requires Windows, PowerShell 7, and dbatools.
 
-## Network browser interface
+## Network browser interface and portable mode
 
 The browser UI is hosted by `Invoke-DbMigrationWeb.ps1` on Windows PowerShell 7.2 or later. It supports entering up to three source/target/shared-backup-path pairs, selecting full-data or schema-only mode per pair, discovery, per-database overwrite approval, server-level migration options, and live stage/outcome/error monitoring. Source, target, backup path, and pair mode can be remembered in that browser's local storage. Those browser settings do not alter `config/migration.config.json`.
+
+For a local portable run without machine-level HTTPS registration, use `Start-PortableDbMigrationWeb.ps1`:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\Start-PortableDbMigrationWeb.ps1
+```
+
+This launches the app on a loopback address such as `http://localhost:9080/` or the next free local port and stores auth and logs in the project folder under `portable\auth` and `portable\logs`. The default portable login is `migration-admin` / `MigrationAdmin123!`.
 
 The web migration plan runs source/target pairs in order and databases within each pair one at a time. Full-data mode runs the regular preflight, backup/restore, restore-access check, enabled post-migration actions, and temporary backup cleanup for each database. Source database contents and settings are not modified: the source is read for discovery and a `COPY_ONLY` backup; restores, schema changes, user repair, statistics updates, and server-object copies are applied only to the target. SQL Server records native backup history in the source `msdb`, and backup compression/checksum work can consume source CPU and I/O. The monitor polls SQL Server request progress during backup and restore; this telemetry requires permission to read `sys.dm_exec_requests` (`VIEW SERVER STATE`, or `VIEW SERVER PERFORMANCE STATE` on SQL Server 2022). If that permission is unavailable, the UI reports that percentage telemetry is unavailable and continues showing elapsed-stage heartbeats.
 
