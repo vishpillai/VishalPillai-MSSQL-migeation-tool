@@ -183,6 +183,41 @@ function Test-MigrationDatabaseExists {
     return $true
 }
 
+function Invoke-MigrationCustomSql {
+    [CmdletBinding()]
+    param(
+        [Parameter()][AllowEmptyString()][string] $SqlInstance,
+        [Parameter()][string] $Database = 'master',
+        [Parameter(Mandatory)][AllowEmptyString()][string] $Query
+    )
+
+    if ([string]::IsNullOrWhiteSpace($SqlInstance)) {
+        throw 'SqlInstance is required.'
+    }
+
+    $trimmedQuery = $Query.Trim()
+    if ([string]::IsNullOrWhiteSpace($trimmedQuery)) {
+        throw 'Custom T-SQL query cannot be empty.'
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Database)) {
+        $Database = 'master'
+    }
+
+    Invoke-MigrationCustomSqlInternal -SqlInstance $SqlInstance -Database $Database -Query $trimmedQuery
+}
+
+function Invoke-MigrationCustomSqlInternal {
+    [CmdletBinding()]
+    param(
+        [Parameter()][AllowEmptyString()][string] $SqlInstance,
+        [Parameter()][string] $Database = 'master',
+        [Parameter(Mandatory)][AllowEmptyString()][string] $Query
+    )
+
+    Invoke-DbaQuery -SqlInstance $SqlInstance -Database $Database -Query $Query -EnableException -ErrorAction Stop
+}
+
 function Get-MigrationState {
     [CmdletBinding()]
     param(
@@ -743,4 +778,4 @@ function Write-MigrationReports {
     [pscustomobject]@{ CsvPath = $csvPath; HtmlPath = $htmlPath }
 }
 
-Export-ModuleMember -Function Import-MigrationConfiguration, Get-MigrationTargetDatabaseDecision, Test-MigrationServerWorkEnabled, Get-MigrationDatabase, Test-MigrationDatabaseExists, Get-MigrationState, Get-MigrationStateKey, Get-MigrationBackupPath, Get-MigrationRunBackupDirectory, Get-MigrationDatabaseBackupDirectory, Get-MigrationBackupStripeFiles, Write-MigrationProgressEvent, Wait-MigrationControl, Remove-MigrationRunBackupDirectory, Set-MigrationState, Write-MigrationReports
+Export-ModuleMember -Function Import-MigrationConfiguration, Get-MigrationTargetDatabaseDecision, Test-MigrationServerWorkEnabled, Get-MigrationDatabase, Test-MigrationDatabaseExists, Invoke-MigrationCustomSql, Get-MigrationState, Get-MigrationStateKey, Get-MigrationBackupPath, Get-MigrationRunBackupDirectory, Get-MigrationDatabaseBackupDirectory, Get-MigrationBackupStripeFiles, Write-MigrationProgressEvent, Wait-MigrationControl, Remove-MigrationRunBackupDirectory, Set-MigrationState, Write-MigrationReports

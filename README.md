@@ -7,9 +7,10 @@ A modular PowerShell 7 framework for migrating user databases from SQL Server 20
 ## Requirements
 
 - PowerShell 7.2 or later.
-- dbatools (`Install-Module dbatools -Scope CurrentUser`).
+- dbatools (`Install-Module dbatools -Scope CurrentUser`), required for SQL Server discovery, migration, and related operations.
 - Pester 5 for tests (`Install-Module Pester -Scope CurrentUser -Force`).
-- Network access from the PowerShell host to SQL Server instances.
+- The browser UI uses built-in HTML, CSS, and JavaScript; it does not require Node.js, npm, a frontend framework, or CDN access.
+- Network connectivity from the PowerShell host to SQL Server instances and required backup shares. Migration operations are local/on-prem and do not require internet access; only optional patch-catalog refresh and package download use the internet.
 - Backup paths accessible to the SQL Server service accounts on both source and target. Provide an isolated path for each source/target pair.
 - Permissions to read source databases, create/restore target databases, copy server objects, repair users, and update statistics.
 
@@ -78,11 +79,13 @@ The GUI starts with the first source/target pair from the configuration. Enter o
 
 The browser UI is hosted by `Invoke-DbMigrationWeb.ps1` on Windows PowerShell 7.2 or later. It supports entering up to three source/target/shared-backup-path pairs, selecting full-data or schema-only mode per pair, discovery, per-database overwrite approval, server-level migration options, and live stage/outcome/error monitoring. Source, target, backup path, and pair mode can be remembered in that browser's local storage. Those browser settings do not alter `config/migration.config.json`.
 
+The web UI includes an interactive patch advisor for configured SQL instances. Refresh the SQL build catalog, select a KB from the update dropdown, and assess each server's product build, service-pack branch, installed KB, patch compatibility, and support lifecycle before downloading or applying. Download uses dbatools `Get-DbaKbUpdate`/`Save-DbaKbUpdate` to retrieve the selected package from Microsoft; it is not installed until Apply is confirmed. Alternatively, stage packages yourself and use the same local repository path. The repository must be accessible to the app host and target Windows server, and the app identity needs remote-administration permissions. SQL services can restart during patching. A Windows host restart is optional and off by default. Clustered SQL Server instances are deliberately rejected; patch them with a cluster-aware process.
+
 ## Installable Windows app
 
 The verified and supported distribution path is the Windows app bundle created by `Install-DbMigrationWeb.ps1`. This has been smoke-tested and validated through the automated Pester suite and installs a local app folder, desktop shortcut, and Start menu shortcut without requiring a manual PowerShell launch each time.
 
-Status: the project has passed 40 automated tests covering configuration, install/uninstall behavior, portable app storage, and migration logic. A WiX-based MSI/EXE packaging prototype is still experimental and is not the currently supported production artifact.
+Status: the project has passed 53 automated tests covering configuration, install/uninstall behavior, portable app storage, patch catalog and eligibility safeguards, and migration logic. A WiX-based MSI/EXE packaging prototype is still experimental and is not the currently supported production artifact.
 
 Install for the current user:
 

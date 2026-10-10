@@ -5,55 +5,79 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Database Migration</title>
   <style>
-    :root { color-scheme: light; font-family: "Segoe UI", Arial, sans-serif; color: #17212b; background: #f2f5f8; }
+    :root { color-scheme: light; font-family: "Segoe UI", Arial, sans-serif; color: #20252b; background: #e7e9ec; --chrome: #294b6d; --chrome-dark: #203d59; --line: #aeb7c1; --panel-title: #e3e7eb; --accent: #0078d4; }
     * { box-sizing: border-box; }
-    body { margin: 0; }
-    header { padding: 18px 28px; background: #143b5d; color: white; display: flex; justify-content: space-between; align-items: center; }
-    header h1 { margin: 0; font-size: 21px; font-weight: 600; }
-    main { max-width: 1180px; margin: 24px auto; padding: 0 18px; }
-    .card { background: white; border: 1px solid #d9e1e8; border-radius: 9px; padding: 20px; margin-bottom: 18px; box-shadow: 0 2px 6px #17354b0c; }
-    h2 { margin: 0 0 16px; font-size: 17px; }
-    label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; }
+    textarea { width: 100%; min-height: 220px; resize: vertical; padding: 10px; border: 1px solid #8f9ba7; border-radius: 1px; background: #fff; color: #20252b; font: 13px/1.5 Consolas, monospace; tab-size: 4; }
+    footer { padding: 8px 16px; text-align: right; color: #52606d; font-size: 12px; border-top: 1px solid #c5cbd1; background: #f0f1f2; }
+    header { min-height: 46px; padding: 7px 14px; background: var(--chrome); color: white; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--chrome-dark); }
+    header h1 { margin: 0; font-size: 17px; font-weight: 600; }
+    .header-context { margin-left: 12px; color: #d5e2ef; font-size: 12px; }
+    .brand { display: flex; align-items: baseline; }
+    main { width: 100%; flex: 1; margin: 0; padding: 8px; min-height: 0; }
+    .card { min-width: 0; background: white; border: 1px solid var(--line); border-radius: 1px; padding: 12px; margin: 0; box-shadow: none; }
+    h2 { margin: -12px -12px 10px; padding: 8px 11px; font-size: 13px; font-weight: 600; background: var(--panel-title); border-bottom: 1px solid var(--line); }
     input, select, button { font: inherit; }
-    input[type="text"], input[type="password"], select { width: 100%; padding: 10px; border: 1px solid #aebdca; border-radius: 5px; }
-    button { cursor: pointer; border: 0; border-radius: 5px; background: #1769aa; color: white; padding: 10px 15px; font-weight: 600; }
-    button.secondary { background: #e8eef3; color: #20394d; }
+    input[type="text"], input[type="password"], select { width: 100%; min-height: 30px; padding: 5px 7px; border: 1px solid #9aa6b2; border-radius: 1px; background: white; color: #20252b; }
+    input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+    button { cursor: pointer; border: 1px solid #17669f; border-radius: 1px; background: var(--accent); color: white; padding: 6px 11px; font-weight: 600; }
+    button.secondary { border-color: #aab4be; background: #edf0f2; color: #263746; }
     button:disabled { opacity: .55; cursor: not-allowed; }
-    .row { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
-    .grow { flex: 1; min-width: 230px; }
-    .pair-card { border: 1px solid #d9e1e8; border-radius: 7px; padding: 14px; margin: 14px 0; }
-    .pair-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; align-items: end; }
+    .row { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+    .grow { flex: 1; min-width: 150px; }
+    #application { display: grid; grid-template-areas: "explorer editor" "explorer monitor"; grid-template-columns: minmax(310px, .8fr) minmax(0, 1.8fr); grid-template-rows: minmax(330px, 1.1fr) minmax(240px, .9fr); gap: 7px; min-height: calc(100vh - 76px); }
+    #application > section:first-child { grid-area: explorer; min-height: 0; overflow: auto; }
+    #application > section:nth-child(2) { grid-area: monitor; min-height: 0; }
+    #application > section:nth-child(3) { grid-area: editor; min-height: 0; }
+    .pair-card { border: 1px solid #b9c2ca; border-radius: 1px; padding: 9px; margin: 9px 0; background: #f7f8f9; }
+    .pair-card h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+    .pair-grid { display: grid; grid-template-columns: 1fr; gap: 8px; align-items: end; }
     .pair-grid label { margin: 0; }
-    .options { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px 18px; margin-top: 14px; }
+    .options { display: grid; grid-template-columns: 1fr; gap: 7px; margin-top: 12px; }
+    .patch-panel { margin-top: 12px; border: 1px solid #b9c2ca; background: #f7f8f9; }
+    .patch-panel summary { padding: 8px; cursor: pointer; font-size: 13px; font-weight: 600; background: var(--panel-title); }
+    .patch-content { padding: 9px; }
+    #patch-targets { display: grid; gap: 6px; margin: 8px 0 12px; }
+    .patch-actions { display: flex; flex-wrap: wrap; gap: 7px; margin: 9px 0; }
+    .patch-insights { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 6px; margin: 10px 0; }
+    .patch-metric { border: 1px solid #c3cbd2; background: #fff; padding: 7px; }
+    .patch-metric strong { display: block; font-size: 17px; }
+    .patch-metric span { color: #52606d; font-size: 11px; }
+    .patch-results td { vertical-align: top; }
+    .patch-result-eligible { color: #167343; font-weight: 600; }
+    .patch-result-alreadyinstalled, .patch-result-superseded, .patch-result-samebuild { color: #52606d; }
+    .patch-result-unsupportedcluster, .patch-result-versionmismatch, .patch-result-servicepackmismatch, .patch-result-unknownbuild { color: #a52121; font-weight: 600; }
     .check { display: flex; align-items: center; gap: 8px; font-weight: 400; margin: 0; }
     .check input { width: 16px; height: 16px; }
-    .muted { color: #5d6e7c; font-size: 13px; }
+    .muted { color: #52606d; font-size: 12px; }
     .error { color: #a52121; margin-top: 10px; white-space: pre-wrap; }
     .hidden { display: none !important; }
     .table-wrap { overflow-x: auto; }
-    table { border-collapse: collapse; width: 100%; font-size: 13px; }
-    th, td { padding: 10px 8px; border-bottom: 1px solid #e2e8ed; text-align: left; }
+    table { border-collapse: collapse; width: 100%; font-size: 12px; }
+    th, td { padding: 6px 7px; border: 1px solid #d3d9df; text-align: left; }
     th { color: #4d5d69; font-weight: 600; }
+    th { background: #edf0f2; }
     td.nowrap { white-space: nowrap; }
     .target-exists { color: #a45b00; font-weight: 600; }
     .status-line { display: flex; flex-wrap: wrap; gap: 10px 24px; align-items: center; }
-    .pill { border-radius: 99px; background: #edf2f6; padding: 5px 10px; font-size: 12px; }
-    .progress { height: 9px; border-radius: 9px; background: #e4ebf0; overflow: hidden; margin: 12px 0; }
-    .progress > div { height: 100%; width: 0; background: #178151; transition: width .2s; }
+    .pill { border: 1px solid #b9c2ca; background: #edf0f2; padding: 4px 8px; font-size: 12px; }
+    .progress { height: 8px; border: 1px solid #c3cbd2; background: #edf0f2; overflow: hidden; margin: 9px 0; }
+    .progress > div { height: 100%; width: 0; background: #198754; transition: width .2s; }
     .progress-label { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: #5d6e7c; }
-    .progress.step-progress > div { background: #1769aa; }
-    #events { height: 260px; overflow: auto; background: #101b24; color: #e3edf5; padding: 10px 12px; border-radius: 5px; font: 12px/1.55 Consolas, monospace; }
-    .event { border-bottom: 1px solid #293641; padding: 3px 0; overflow-wrap: anywhere; }
-    .event.failed { color: #ff9b9b; }
-    .event.completed { color: #a7e6bd; }
-    .event.skipped { color: #ffd58b; }
+    .progress.step-progress > div { background: var(--accent); }
+    #events { height: 190px; overflow: auto; background: #fff; color: #20252b; padding: 8px; border: 1px solid #aeb7c1; border-radius: 1px; font: 12px/1.5 Consolas, monospace; }
+    .event { border-bottom: 1px solid #e0e4e8; padding: 3px 0; overflow-wrap: anywhere; }
+    .event.failed { color: #a52121; }
+    .event.completed { color: #167343; }
+    .event.skipped { color: #8a5a00; }
     #login-card { max-width: 420px; margin: 70px auto; }
-    @media (max-width: 620px) { header { padding: 15px; } main { margin-top: 14px; padding: 0 10px; } .card { padding: 15px; } }
+    @media (max-width: 900px) { #application { grid-template-areas: "explorer" "editor" "monitor"; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; min-height: 0; } #application > section:first-child { max-height: none; } }
+    @media (max-width: 620px) { header { padding: 8px 10px; } .header-context { display: none; } main { padding: 6px; } .card { padding: 10px; } h2 { margin: -10px -10px 9px; } }
   </style>
 </head>
 <body>
   <header>
-    <h1>Database Migration</h1>
+    <div class="brand"><h1>Database Migration</h1><span class="header-context">SQL Server management workspace</span></div>
     <button id="logout" class="secondary hidden">Sign out</button>
   </header>
   <main>
@@ -92,6 +116,34 @@
           <button id="start" disabled>Start migration</button>
           <span id="migration-error" class="error" role="alert"></span>
         </div>
+        <details id="patch-panel" class="patch-panel">
+          <summary>Patch selected SQL instances</summary>
+          <div class="patch-content">
+            <p class="muted">Refresh Microsoft’s SQL build catalog, assess compatibility and installed build state, then download and apply a selected KB. Catalog refresh and package download need internet access; assessment and installation use the local SQL environment. The repository must be accessible to the app host and target server.</p>
+            <div id="patch-targets"></div>
+            <div class="patch-actions">
+              <button id="refresh-patch-catalog" class="secondary" type="button">Refresh update catalog</button>
+              <span id="patch-catalog-status" class="muted" aria-live="polite">Catalog not loaded.</span>
+            </div>
+            <label for="patch-catalog">SQL Server update</label>
+            <select id="patch-catalog" disabled><option value="">Refresh the catalog to list updates</option></select>
+            <div class="patch-actions">
+              <button id="assess-patch" class="secondary" type="button" disabled>Assess eligibility</button>
+              <button id="download-patch" class="secondary" type="button" disabled>Download selected KB</button>
+            </div>
+            <label for="patch-update-path">Update repository folder</label>
+            <input id="patch-update-path" type="text" placeholder="\\fileserver\sql-updates or C:\SqlUpdates">
+            <label class="check" style="margin-top:9px"><input id="patch-restart" type="checkbox"> Restart Windows host if required by the update sequence</label>
+            <div class="row" style="margin-top:10px">
+              <button id="run-patch" type="button" disabled>Apply eligible instances</button>
+              <span id="patch-status" class="muted" aria-live="polite">No patch run started.</span>
+            </div>
+            <div id="patch-error" class="error" role="alert"></div>
+            <div id="patch-insights" class="patch-insights" aria-live="polite"></div>
+            <div id="patch-results" class="table-wrap"></div>
+            <div class="muted" style="margin-top:7px">Clustered SQL Server instances are not supported by this workflow. Use a cluster-aware patch plan for those servers.</div>
+          </div>
+        </details>
       </section>
 
       <section class="card">
@@ -111,15 +163,55 @@
         </div>
         <div id="events" aria-live="polite"></div>
       </section>
+
+      <section class="card">
+        <h2>Run custom T-SQL</h2>
+        <p class="muted">Execute a custom query against the selected source or target instance for the current pair. Choose master or a database found during discovery.</p>
+        <div class="row">
+          <div class="grow">
+            <label for="custom-pair-index">Pair</label>
+            <select id="custom-pair-index"></select>
+          </div>
+          <div class="grow">
+            <label for="custom-server-role">Instance</label>
+            <select id="custom-server-role">
+              <option value="Source">Source</option>
+              <option value="Target">Target</option>
+            </select>
+          </div>
+          <div class="grow">
+            <label for="custom-database">Database</label>
+            <select id="custom-database"></select>
+          </div>
+        </div>
+        <div style="margin-top:12px">
+          <label for="custom-query">SQL statement</label>
+          <textarea id="custom-query" placeholder="SELECT @@servername AS ServerName;\nSELECT name FROM sys.databases ORDER BY name;"></textarea>
+        </div>
+        <div class="row" style="margin-top:14px">
+          <button id="run-custom-sql" type="button">Run custom SQL</button>
+          <button id="clear-custom-sql" class="secondary" type="button">Clear</button>
+        </div>
+        <div id="custom-sql-status" class="muted" style="margin-top:12px"></div>
+        <div id="custom-sql-error" class="error" role="alert"></div>
+        <div id="custom-sql-results" class="table-wrap hidden" style="margin-top:12px"></div>
+      </section>
     </div>
   </main>
+  <footer>Developed by - vishal pillai</footer>
   <script>
     const $ = (id) => document.getElementById(id);
     let pairs = [];
+    let patchCatalog = [];
+    let patchCatalogUpdatedAt = null;
+    let patchAssessment = null;
+    let patchAction = null;
+    let patchKB = "";
     let optionDefaults = {};
     const settingsKey = "dbMigrationWebSettings.v2";
     let eventCursor = 0;
     let migrationActive = false;
+    let patchActive = false;
     let controlAction = "Run";
     let controlPaused = false;
     let alertedFailure = false;
@@ -189,9 +281,80 @@
           }));
         if (!pairs.length) pairs = [{ Source: "", Target: "", BackupPath: "", MigrationMode: "Full", databases: null }];
         renderPairs();
+        refreshCustomSqlPairs();
       } catch (error) {
         $("discovery-error").textContent = error.message;
       }
+    }
+
+    function refreshCustomSqlPairs() {
+      const selector = $("custom-pair-index");
+      if (!selector) return;
+      const selectedIndex = selector.value;
+      selector.replaceChildren();
+      pairs.forEach((pair, index) => {
+        const option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = `Pair ${index + 1}: ${pair.Source || "[source]"} -> ${pair.Target || "[target]"}`;
+        selector.append(option);
+      });
+      selector.disabled = pairs.length === 0;
+      if (pairs.some((_, index) => String(index) === selectedIndex)) selector.value = selectedIndex;
+      refreshCustomSqlDatabases();
+    }
+
+    function refreshCustomSqlDatabases() {
+      const selector = $("custom-database");
+      if (!selector) return;
+      const selectedDatabase = selector.value;
+      selector.replaceChildren();
+      const defaultOption = document.createElement("option");
+      defaultOption.value = "master";
+      defaultOption.textContent = "master (default)";
+      selector.append(defaultOption);
+
+      const pair = pairs[Number($("custom-pair-index").value)];
+      for (const database of pair?.databases || []) {
+        const option = document.createElement("option");
+        option.value = database.Database;
+        option.textContent = database.Database;
+        selector.append(option);
+      }
+      selector.value = [...selector.options].some((option) => option.value === selectedDatabase)
+        ? selectedDatabase
+        : "master";
+    }
+
+    function renderCustomSqlResults(rows, columns) {
+      const container = $("custom-sql-results");
+      container.classList.remove("hidden");
+      container.replaceChildren();
+      if (!rows || rows.length === 0) {
+        container.innerHTML = '<div class="muted">Query completed successfully but returned no rows.</div>';
+        return;
+      }
+      const table = document.createElement("table");
+      const head = document.createElement("thead");
+      const rowHead = document.createElement("tr");
+      columns.forEach((column) => {
+        const th = document.createElement("th");
+        th.textContent = column;
+        rowHead.append(th);
+      });
+      head.append(rowHead);
+      const body = document.createElement("tbody");
+      rows.forEach((row) => {
+        const tr = document.createElement("tr");
+        columns.forEach((column) => {
+          const td = document.createElement("td");
+          const value = row[column];
+          td.textContent = value === null || value === undefined ? "" : String(value);
+          tr.append(td);
+        });
+        body.append(tr);
+      });
+      table.append(head, body);
+      container.append(table);
     }
 
     function updateStartButton() {
@@ -199,7 +362,171 @@
         sum + (pair.databases || []).filter((database) => database.Selected).length, 0);
       const hasServerWork = ["MigrateLogins", "MigrateAgentJobs", "MigrateAgentOperators", "ConfigureLinkedServers"]
         .some((key) => document.querySelector(`[data-option="${key}"]`)?.checked);
-      $("start").disabled = migrationActive || (!selectedCount && !hasServerWork);
+      $("start").disabled = migrationActive || patchActive || (!selectedCount && !hasServerWork);
+    }
+
+    function getSelectedPatchTargets() {
+      return [...document.querySelectorAll("#patch-targets input[data-patch-role]:checked")]
+        .map((checkbox) => ({ PairIndex: Number(checkbox.dataset.patchPairIndex), Role: checkbox.dataset.patchRole }));
+    }
+
+    function renderPatchTargets() {
+      const list = $("patch-targets");
+      const selected = new Set([...list.querySelectorAll("input[data-patch-role]:checked")]
+        .map((checkbox) => `${checkbox.dataset.patchRole}:${checkbox.dataset.patchInstance}`));
+      list.replaceChildren();
+      pairs.forEach((pair, pairIndex) => {
+        for (const role of ["Source", "Target"]) {
+          const sqlInstance = pair[role];
+          if (!sqlInstance) continue;
+          const label = document.createElement("label");
+          label.className = "check";
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.dataset.patchPairIndex = String(pairIndex);
+          checkbox.dataset.patchRole = role;
+          checkbox.dataset.patchInstance = sqlInstance;
+          checkbox.checked = selected.has(`${role}:${sqlInstance}`);
+          label.append(checkbox, document.createTextNode(`Pair ${pairIndex + 1} ${role}: ${sqlInstance}`));
+          list.append(label);
+        }
+      });
+      if (!pairs.some((pair) => pair.Source || pair.Target)) {
+        const empty = document.createElement("div");
+        empty.className = "muted";
+        empty.textContent = "Enter SQL instances in the pair configuration to assess them for patching.";
+        list.append(empty);
+      }
+      updatePatchControls();
+    }
+
+    function formatPatchDate(value) {
+      if (!value) return "Not available";
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString();
+    }
+
+    function formatPatchLifecycle(value) {
+      if (!value) return "Lifecycle not in catalog";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "Lifecycle not in catalog";
+      return date < new Date() ? `Out of support since ${date.toLocaleDateString()}` : `Support through ${date.toLocaleDateString()}`;
+    }
+
+    function renderPatchCatalog(patches, updatedAt) {
+      patchCatalog = patches || [];
+      patchCatalogUpdatedAt = updatedAt || null;
+      const selector = $("patch-catalog");
+      const previousKB = selector.value;
+      selector.replaceChildren();
+      for (const patch of patchCatalog) {
+        const option = document.createElement("option");
+        option.value = String(patch.KB);
+        option.textContent = `${patch.Product} ${patch.ServicePack} ${patch.UpdateLevel} · KB${patch.KB} · build ${patch.BuildLevel} · ${formatPatchDate(patch.ReleaseDate)} · ${formatPatchLifecycle(patch.SupportedUntil)}`;
+        selector.append(option);
+      }
+      selector.disabled = patchCatalog.length === 0;
+      if (patchCatalog.some((patch) => String(patch.KB) === previousKB)) selector.value = previousKB;
+      $("patch-catalog-status").textContent = patchCatalog.length
+        ? `${patchCatalog.length} update(s) · refreshed ${formatPatchDate(updatedAt)}`
+        : "No SQL Server updates found in the current catalog.";
+      patchAssessment = null;
+      renderPatchAssessment(null);
+      updatePatchControls();
+    }
+
+    function renderPatchAssessment(assessment) {
+      patchAssessment = assessment;
+      const insights = $("patch-insights");
+      const resultsContainer = $("patch-results");
+      insights.replaceChildren();
+      resultsContainer.replaceChildren();
+      if (!assessment) {
+        const message = document.createElement("div");
+        message.className = "muted";
+        message.textContent = "Select servers and an update, then assess eligibility.";
+        insights.append(message);
+        updatePatchControls();
+        return;
+      }
+
+      const results = assessment.results || [];
+      const counts = [
+        [assessment.eligibleCount || 0, "Eligible"],
+        [assessment.alreadyInstalledCount || 0, "Already installed"],
+        [assessment.blockedCount || 0, "Blocked / mismatch"]
+      ];
+      for (const [value, labelText] of counts) {
+        const metric = document.createElement("div");
+        metric.className = "patch-metric";
+        const strong = document.createElement("strong");
+        strong.textContent = String(value);
+        const caption = document.createElement("span");
+        caption.textContent = labelText;
+        metric.append(strong, caption);
+        insights.append(metric);
+      }
+
+      const table = document.createElement("table");
+      table.className = "patch-results";
+      const head = document.createElement("thead");
+      head.innerHTML = "<tr><th>SQL instance</th><th>Installed build</th><th>Installed patch</th><th>Selected patch</th><th>Readiness</th><th>Lifecycle</th><th>Assessment</th></tr>";
+      const body = document.createElement("tbody");
+      for (const item of results) {
+        const row = document.createElement("tr");
+        for (const value of [
+          `${item.Role || ""} · ${item.SqlInstance || ""}`,
+          item.CurrentVersion || "Unknown",
+          [item.CurrentPatch, item.CurrentKB ? `KB${item.CurrentKB}` : ""].filter(Boolean).join(" · ") || "Unknown",
+          `${assessment.patch?.Title || ""} · build ${item.PatchBuild || ""}`,
+          item.Status || "Unknown",
+          `Instance: ${formatPatchLifecycle(item.SupportedUntil)}; selected patch: ${formatPatchLifecycle(item.PatchSupportedUntil)}`,
+          item.Reason || ""
+        ]) {
+          const cell = document.createElement("td");
+          cell.textContent = value;
+          row.append(cell);
+        }
+        row.cells[4].className = `patch-result-${String(item.Status || "").toLowerCase()}`;
+        body.append(row);
+      }
+      table.append(head, body);
+      resultsContainer.append(table);
+      updatePatchControls();
+    }
+
+    function invalidatePatchAssessment(message = "Selection changed. Reassess before applying.") {
+      if (!patchAssessment) return;
+      patchAssessment = null;
+      $("patch-insights").replaceChildren();
+      const note = document.createElement("div");
+      note.className = "muted";
+      note.textContent = message;
+      $("patch-insights").append(note);
+      $("patch-results").replaceChildren();
+      updatePatchControls();
+    }
+
+    function updatePatchControls(forceLocked = false) {
+      const locked = forceLocked || migrationActive || patchActive;
+      const hasPatch = Boolean($("patch-catalog").value);
+      const hasTargets = getSelectedPatchTargets().length > 0;
+      const assessmentMatchesSelection = patchAssessment &&
+        String(patchAssessment.patch?.KB) === String($("patch-catalog").value) &&
+        (patchAssessment.results || []).length === getSelectedPatchTargets().length;
+      $("refresh-patch-catalog").disabled = locked;
+      $("patch-catalog").disabled = locked || patchCatalog.length === 0;
+      $("assess-patch").disabled = locked || !hasPatch || !hasTargets;
+      $("download-patch").disabled = locked || !hasPatch || !$("patch-update-path").value.trim();
+      $("run-patch").disabled = locked || !assessmentMatchesSelection ||
+        !(patchAssessment?.eligibleCount > 0) || !$("patch-update-path").value.trim();
+      for (const control of document.querySelectorAll("#patch-targets input, #patch-update-path, #patch-restart")) {
+        control.disabled = locked;
+      }
+    }
+
+    function setPatchControlsLocked(locked) {
+      updatePatchControls(locked);
     }
 
     function renderPairs() {
@@ -281,6 +608,9 @@
         list.append(card);
       });
       $("add-pair").disabled = pairs.length >= 3 || migrationActive;
+      refreshCustomSqlPairs();
+      renderPatchTargets();
+      invalidatePatchAssessment("Pair configuration changed. Reassess before applying.");
       updateStartButton();
     }
 
@@ -381,8 +711,17 @@
       if (table) table.remove();
       const discoverButton = card.querySelector('[data-action="discover"]');
       if (discoverButton) discoverButton.textContent = "Discover databases";
+      renderPatchTargets();
+      invalidatePatchAssessment("SQL endpoints changed. Reassess before applying.");
+      refreshCustomSqlDatabases();
       saveSettings();
       updateStartButton();
+    });
+
+    $("custom-pair-index").addEventListener("change", refreshCustomSqlDatabases);
+    $("patch-targets").addEventListener("change", () => {
+      invalidatePatchAssessment("Selected servers changed. Reassess before applying.");
+      updatePatchControls();
     });
 
     $("pair-list").addEventListener("click", async (event) => {
@@ -445,6 +784,7 @@
       }
       $("add-pair").disabled = locked || pairs.length >= 3;
       updateStartButton();
+      setPatchControlsLocked(locked);
       updateControlButtons();
     }
 
@@ -479,6 +819,131 @@
       if (confirm("Stop at the next safe boundary? The current database or server-object stage will finish first.")) {
         sendRunControl("Stop");
       }
+    });
+
+    async function startPatchWorker(action, body) {
+      patchActive = true;
+      patchAction = action;
+      patchKB = String(body.KB);
+      alertedFailure = false;
+      $("patch-error").textContent = "";
+      $("patch-status").textContent = action === "Download" ? `Starting download for KB${patchKB}…` : `Starting patch for KB${patchKB}…`;
+      setRunControlsLocked(true);
+      try {
+        const endpoint = action === "Download" ? "/api/patch/download" : "/api/patch";
+        const result = await api(endpoint, body);
+        $("patch-status").textContent = action === "Download"
+          ? `Downloading KB${result.KB} · ${result.RunId}`
+          : `Applying KB${result.KB} to ${result.TargetCount} instance(s) · ${result.RunId}`;
+      } catch (error) {
+        patchActive = false;
+        $("patch-error").textContent = error.message;
+        $("patch-status").textContent = "Patch operation did not start.";
+      } finally {
+        setRunControlsLocked(migrationActive || patchActive);
+      }
+    }
+
+    $("refresh-patch-catalog").addEventListener("click", async () => {
+      $("patch-error").textContent = "";
+      $("patch-catalog-status").textContent = "Refreshing SQL Server build catalog…";
+      $("refresh-patch-catalog").disabled = true;
+      try {
+        const result = await api("/api/patch/catalog", { Refresh: true });
+        renderPatchCatalog(result.patches || [], result.updatedAt);
+        $("patch-catalog-status").textContent = `${result.patches.length} update(s) · build catalog refreshed ${formatPatchDate(result.updatedAt)}`;
+      } catch (error) {
+        $("patch-error").textContent = error.message;
+        $("patch-catalog-status").textContent = "Catalog refresh failed. Check internet access and try again.";
+      } finally {
+        updatePatchControls();
+      }
+    });
+
+    $("patch-catalog").addEventListener("change", () => {
+      invalidatePatchAssessment("Selected update changed. Reassess before applying.");
+      updatePatchControls();
+    });
+    $("patch-update-path").addEventListener("input", updatePatchControls);
+
+    $("assess-patch").addEventListener("click", async () => {
+      const targets = getSelectedPatchTargets();
+      const kb = $("patch-catalog").value;
+      $("patch-error").textContent = "";
+      $("patch-status").textContent = `Checking KB${kb} against ${targets.length} selected instance(s)…`;
+      $("assess-patch").disabled = true;
+      try {
+        const assessment = await api("/api/patch/assess", { KB: kb, Targets: targets });
+        renderPatchAssessment(assessment);
+        $("patch-status").textContent = `Assessment completed for KB${assessment.patch.KB} at ${formatPatchDate(assessment.assessedAt)}.`;
+      } catch (error) {
+        $("patch-error").textContent = error.message;
+        $("patch-status").textContent = "Patch assessment failed.";
+      } finally {
+        updatePatchControls();
+      }
+    });
+
+    $("download-patch").addEventListener("click", async () => {
+      const kb = $("patch-catalog").value;
+      const updatePath = $("patch-update-path").value.trim();
+      if (!confirm(`Download KB${kb} from Microsoft into:\n\n${updatePath}\n\nThe package will not be installed until you explicitly apply it.`)) return;
+      await startPatchWorker("Download", { KB: kb, UpdatePath: updatePath });
+    });
+
+    $("run-patch").addEventListener("click", async () => {
+      const kb = $("patch-catalog").value;
+      const updatePath = $("patch-update-path").value.trim();
+      const restart = $("patch-restart").checked;
+      const selectedTargets = new Set(getSelectedPatchTargets().map(({ PairIndex, Role }) => `${PairIndex}:${Role}`));
+      const targets = (patchAssessment?.results || [])
+        .filter((item) => item.Status === "Eligible" && selectedTargets.has(`${item.PairIndex}:${item.Role}`))
+        .map((item) => ({ PairIndex: item.PairIndex, Role: item.Role }));
+      if (!targets.length) {
+        $("patch-error").textContent = "No selected instance is eligible for this patch. Assess the current selection first.";
+        return;
+      }
+      const selectedNames = targets.map(({ PairIndex, Role }) => `Pair ${PairIndex + 1} ${Role}: ${pairs[PairIndex]?.[Role] || "unknown"}`);
+      const rebootNote = restart ? "The Windows host may be restarted." : "Windows host restart is disabled.";
+      if (!confirm(`Apply KB${kb} only to these eligible SQL instances?\n\n${selectedNames.join("\n")}\n\nSQL services may restart. ${rebootNote}\n\nConfirm you have a maintenance window and a recoverable backup.`)) return;
+      await startPatchWorker("Apply", { KB: kb, Targets: targets, UpdatePath: updatePath, Restart: restart });
+    });
+
+    $("run-custom-sql").addEventListener("click", async () => {
+      const pairIndex = Number($("custom-pair-index").value);
+      const pair = pairs[pairIndex];
+      if (!pair) {
+        $("custom-sql-error").textContent = "Select a configured pair first.";
+        return;
+      }
+      const query = $("custom-query").value.trim();
+      const database = $("custom-database").value.trim();
+      const serverRole = $("custom-server-role").value;
+      $("custom-sql-error").textContent = "";
+      $("custom-sql-status").textContent = "Running custom SQL…";
+      try {
+        const result = await api("/api/custom-sql", {
+          PairIndex: pairIndex,
+          ServerRole: serverRole,
+          Database: database,
+          Query: query
+        });
+        $("custom-sql-status").textContent = `Execution finished on ${result.instance} (${result.serverRole}) in ${result.elapsedMilliseconds} ms. Rows: ${result.rowCount}`;
+        renderCustomSqlResults(result.rows || [], result.columns || []);
+      } catch (error) {
+        $("custom-sql-status").textContent = "Custom SQL failed.";
+        $("custom-sql-error").textContent = error.message;
+        $("custom-sql-results").classList.add("hidden");
+      }
+    });
+
+    $("clear-custom-sql").addEventListener("click", () => {
+      $("custom-query").value = "";
+      $("custom-database").value = "";
+      $("custom-sql-error").textContent = "";
+      $("custom-sql-status").textContent = "";
+      $("custom-sql-results").classList.add("hidden");
+      $("custom-sql-results").replaceChildren();
     });
 
     $("login-form").addEventListener("submit", async (event) => {
@@ -597,7 +1062,8 @@
       }
       if (item.Status === "Failed" && !alertedFailure) {
         alertedFailure = true;
-        alert(`Migration error${database ? ` for ${database}` : ""}:\n${item.Message || item.Stage}`);
+        const failureType = item.Stage === "ProcessOutput" ? "Operation error" : "Migration error";
+        alert(`${failureType}${database ? ` for ${database}` : ""}:\n${item.Message || item.Stage}`);
       }
       if (item.Stage === "Migration" && ["Completed", "Failed", "Stopped"].includes(item.Status)) {
         migrationActive = false;
@@ -637,6 +1103,22 @@
           }
           updateControlButtons();
         }
+        const patchStatus = await api("/api/patch/status");
+        patchActive = patchStatus.running;
+        if (patchStatus.runId) {
+          patchAction = patchStatus.action;
+          patchKB = String(patchStatus.KB || "");
+          if (patchStatus.running) {
+            const actionLabel = patchStatus.action === "Download" ? "Downloading" : "Applying";
+            $("patch-status").textContent = `${actionLabel} KB${patchStatus.KB} · ${patchStatus.runId}`;
+          } else {
+            if (patchStatus.action === "Apply") invalidatePatchAssessment("Patch operation finished. Assess again before another apply.");
+            $("patch-status").textContent = patchStatus.exitCode === 0
+              ? patchStatus.action === "Download" ? `KB${patchStatus.KB} download completed. Review the event log.` : `KB${patchStatus.KB} apply process completed. Review the event log.`
+              : `KB${patchStatus.KB} ${patchStatus.action?.toLowerCase() || "patch"} failed (exit code ${patchStatus.exitCode}). Review the event log.`;
+          }
+        }
+        setRunControlsLocked(migrationActive || patchActive);
         const result = await api(`/api/events?after=${eventCursor}`);
         for (const item of result.events) {
           appendEvent(item);

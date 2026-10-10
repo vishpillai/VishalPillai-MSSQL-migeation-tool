@@ -8,8 +8,9 @@ Before running the tool, make sure you have:
 
 - Windows operating system
 - PowerShell 7.2 or later
-- dbatools installed
+- dbatools installed for SQL Server discovery and migration
 - Pester installed if you want to run the unit tests
+- No separate browser UI packages or Node.js installation are required
 - Network access from the migration host to the source and target SQL Server instances
 - SQL permissions to:
   - read the source databases
@@ -90,7 +91,7 @@ Each source/target run writes checksummed, compressed, verified full-copy-only b
 
 ## 5. Supported install path and current status
 
-The verified and supported installation method is the Windows app bundle created by `Install-DbMigrationWeb.ps1`. It creates a stable app folder, desktop shortcut, and Start menu entry and has been validated by the automated test suite (40 passing tests). The app bundle is the supported install path for end users.
+The verified and supported installation method is the Windows app bundle created by `Install-DbMigrationWeb.ps1`. It creates a stable app folder, desktop shortcut, and Start menu entry and has been validated by the automated test suite (53 passing tests). The app bundle is the supported install path for end users.
 
 A WiX-based MSI/EXE packaging prototype is still under development and remains a separate engineering task. It is not the current recommended distribution path for production use.
 
@@ -166,6 +167,14 @@ The setup prompts for the app password (at least 14 characters) and stores only 
 The browser UI has fields for source SQL instance, target SQL instance, and shared backup directory (use the UNC path visible to both SQL Server service accounts). Add up to three pairs. Select **Remember source, target, and shared backup paths in this browser** to save those connection settings in that browser's local storage; uncheck it to remove the saved settings. This does not write endpoint changes to `config/migration.config.json`.
 
 Discover each pair, select its databases, and review overwrite approvals. The browser workflow runs the pairs sequentially, and each pair's selected databases one at a time. For each database, it runs validation and capacity preflight, performs the backup and restore, verifies target access, runs selected post-migration checks, and deletes that database's temporary backup folder before starting the next database. Server-level objects run after that pair's databases and before the next pair. A failed validation, migration, post-migration action, backup cleanup, or server-object stage stops the sequence; it does not advance to the next database or pair. The command-line and desktop GUI workflows retain their configured concurrency behavior.
+
+### Patch selected SQL instances
+
+The local web app provides an interactive SQL Server patch advisor for configured source/target instances. Migration and local package installation do not require internet access. Refreshing Microsoft/dbatools build metadata and downloading a selected KB require internet access from the app host; updates are not downloaded automatically.
+
+Expand **Patch selected SQL instances**, select endpoints, and choose **Refresh patch catalog**. Select a listed KB, then choose **Assess eligibility** to review installed build/KB, product and service-pack matching, already-installed or superseded status, and support lifecycle for each instance. Only rows marked eligible can be applied. Enter a repository folder accessible to both the app host and target Windows server, then choose **Download selected KB** or stage the matching Microsoft package there yourself. Downloading does not install the package.
+
+Choose **Apply eligible instances** to patch only the currently assessed eligible rows. Selected instances run sequentially and stop at the first failure. SQL Server services may restart as part of patch installation. Restarting the Windows host is a separate option and is off by default. This workflow rejects clustered SQL Server instances; use a cluster-aware patch procedure for those systems. For remote targets, the app identity needs the remote administration permissions required by dbatools and PowerShell remoting. Do not run a patch during a migration, and schedule a maintenance window before starting.
 
 The browser UI shows discovery metadata, a full-data/schema-only mode for every pair, per-database overwrite checkboxes and confirmations, migration options, live run and per-step percentages, and Pause, Resume, and Stop controls. A selected existing target without explicit overwrite approval is skipped. Schema-only mode scripts database objects without copying table data and does not copy linked servers or other server-level objects. An approved schema-only overwrite drops and recreates the existing target database, deleting its data; review each overwrite decision before starting. Linked-server configuration is skipped by default for the entire run; to honor an explicit skip request, leave “Skip linked servers for this run” checked. Pause takes effect at the next safe stage boundary; Resume continues the run. Stop allows the active database or server-object stage to finish safely before preventing later work. Do not stop the web host while the plan is running.
 

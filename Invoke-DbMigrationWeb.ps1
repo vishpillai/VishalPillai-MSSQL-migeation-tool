@@ -117,6 +117,12 @@ $script:Sessions = @{}
 $script:LoginAttempts = @{}
 $script:DiscoveryByPair = @{}
 $script:MigrationProcess = $null
+$script:PatchProcess = $null
+$script:PatchRunId = $null
+$script:PatchAction = $null
+$script:PatchKB = $null
+$script:PatchCatalog = @()
+$script:PatchCatalogUpdatedAt = $null
 $script:RuntimeConfigPath = $null
 $script:ProgressPath = $null
 $script:ControlPath = $null
@@ -531,8 +537,9 @@ function ConvertTo-WebPairs {
 function Start-WebMigrationPlan {
     param([Parameter(Mandatory)][System.Collections.IDictionary] $Body)
 
-    if ($script:MigrationProcess -and -not $script:MigrationProcess.HasExited) {
-        throw [System.InvalidOperationException]::new('A migration is already running.')
+    if (($script:MigrationProcess -and -not $script:MigrationProcess.HasExited) -or
+        ($script:PatchProcess -and -not $script:PatchProcess.HasExited)) {
+        throw [System.InvalidOperationException]::new('Another migration or SQL Server patch operation is already running.')
     }
     if (-not $Body.Contains('Pairs') -or $Body.Pairs -isnot [array] -or
         -not $Body.Contains('Options') -or $Body.Options -isnot [System.Collections.IDictionary]) {
@@ -662,6 +669,145 @@ function Start-WebMigrationPlan {
         Pairs = @($planPairs | ForEach-Object {
             @{ Source = $_.Source; Target = $_.Target; DatabaseCount = $_.Databases.Count }
         })
+    }
+}
+
+function ConvertTo-WebPatchTargets {
+    param([Parameter(Mandatory)][object[]] $Selections)
+
+    if ($Selections.Count -eq 0) {
+        throw [ArgumentException]::new('Select at least one configured SQL Server instance.')
+    }
+    $targets = [System.Collections.Generic.List[object]]::new()
+    $selectedInstances = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($selection in $Selections) {
+        if ($selection -isnot [System.Collections.IDictionary] -or
+            -not $selection.Contains('PairIndex') -or -not $selection.Contains('Role')) {
+            throw [ArgumentException]::new('Each target selection must include PairIndex and Role.')
+        }
+        if ($selection.PairIndex -is [bool] -or $selection.PairIndex -isnot [byte] -and
+            $selection.PairIndex -isnot [int16] -and $selection.PairIndex -isnot [int32] -and
+            $selection.PairIndex -isnot [int64]) {
+            throw [ArgumentException]::new('PairIndex must be an integer.')
+        }
+        $role = [string]$selection.Role
+        if ($role -notin @('Source', 'Target')) {
+            throw [ArgumentException]::new("Role must be 'Source' or 'Target'.")
+        }
+        $pair = Get-WebPair -Index ([int]$selection.PairIndex)
+        $sqlInstance = [string]$pair[$role]
+        if (-not $selectedInstances.Add($sqlInstance)) {
+            throw [ArgumentException]::new("SQL instance '$sqlInstance' was selected more than once.")
+        }
+        $targets.Add(@{ SqlInstance = $sqlInstance; Role = $role; PairIndex = [int]$selection.PairIndex })
+    }
+    $targets.ToArray()
+}
+
+function Get-WebPatchCatalogRecord {
+    param([Parameter(Mandatory)][string] $KB)
+    $record = @($script:PatchCatalog | Where-Object { [string]$_.KB -eq $KB } | Select-Object -First 1)
+    if (-not $record) {
+        throw [ArgumentException]::new("KB$KB is not in the current patch catalog. Refresh the catalog and choose a listed update.")
+    }
+    $record[0]
+}
+
+function Start-WebSqlServerPatch {
+    param(
+        [Parameter(Mandatory)][System.Collections.IDictionary] $Body,
+        [Parameter(Mandatory)][ValidateSet('Download', 'Apply')][string] $Action
+    )
+
+    if (($script:MigrationProcess -and -not $script:MigrationProcess.HasExited) -or
+        ($script:PatchProcess -and -not $script:PatchProcess.HasExited)) {
+        throw [System.InvalidOperationException]::new('Another migration or SQL Server patch operation is already running.')
+    }
+    foreach ($property in @('KB', 'UpdatePath')) {
+        if (-not $Body.Contains($property)) {
+            throw [ArgumentException]::new("$property is required.")
+        }
+    }
+    $kb = [string]$Body.KB
+    if ($kb -notmatch '^\d{5,10}$') {
+        throw [ArgumentException]::new('KB must be a numeric Microsoft Knowledge Base identifier.')
+    }
+    $patch = Get-WebPatchCatalogRecord -KB $kb
+    $updatePath = [string]$Body.UpdatePath
+    if ([string]::IsNullOrWhiteSpace($updatePath)) {
+        throw [ArgumentException]::new('UpdatePath is required.')
+    }
+
+    $targets = @()
+    $restart = $false
+    if ($Action -eq 'Apply') {
+        foreach ($property in @('Targets', 'Restart')) {
+            if (-not $Body.Contains($property)) {
+                throw [ArgumentException]::new("$property is required.")
+            }
+        }
+        if ($Body.Targets -isnot [array] -or $Body.Restart -isnot [bool]) {
+            throw [ArgumentException]::new('Targets must be an array and Restart must be a JSON boolean.')
+        }
+        $targets = @(ConvertTo-WebPatchTargets -Selections @($Body.Targets))
+        $restart = [bool]$Body.Restart
+        if (-not (Test-Path -LiteralPath $updatePath -PathType Container)) {
+            throw [ArgumentException]::new('The update repository folder does not exist on the app host.')
+        }
+        foreach ($target in $targets) {
+            $assessment = Get-MigrationSqlServerPatchAssessment -SqlInstance $target.SqlInstance -KB $kb
+            if ($assessment.Status -ne 'Eligible') {
+                throw [ArgumentException]::new("Cannot apply KB$kb to '$($target.SqlInstance)': $($assessment.Status) - $($assessment.Reason)")
+            }
+        }
+    }
+
+    $runDirectory = Join-Path $env:LOCALAPPDATA 'DbMigrationWeb\Runs'
+    $null = New-Item -ItemType Directory -Path $runDirectory -Force -ErrorAction Stop
+    $script:PatchRunId = [guid]::NewGuid().ToString('N')
+    $script:PatchAction = $Action
+    $script:PatchKB = $kb
+    $planPath = Join-Path $runDirectory "$($script:PatchRunId)-patch.json"
+    $plan = @{
+        Action = $Action
+        Targets = $targets
+        KB = $kb
+        UpdatePath = [System.IO.Path]::GetFullPath($updatePath)
+        Restart = $restart
+    }
+    $plan | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $planPath -Encoding utf8
+
+    $script:ProcessOutputQueue = [System.Collections.Concurrent.ConcurrentQueue[DbMigration.Web.ProcessOutputLine]]::new()
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = Join-Path $PSHOME 'pwsh.exe'
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    foreach ($argument in @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+        (Join-Path $PSScriptRoot 'Invoke-DbMigrationPatch.ps1'),
+        '-PlanPath', $planPath
+    )) {
+        [void]$startInfo.ArgumentList.Add([string]$argument)
+    }
+    $script:PatchProcess = [System.Diagnostics.Process]::new()
+    $script:PatchProcess.StartInfo = $startInfo
+    $script:ProcessOutputHandler = [DbMigration.Web.ProcessOutputHandler]::new($script:ProcessOutputQueue)
+    $script:ProcessOutputHandler.Attach($script:PatchProcess)
+    if (-not $script:PatchProcess.Start()) {
+        throw 'Could not start the SQL Server patch process.'
+    }
+    $script:PatchProcess.BeginOutputReadLine()
+    $script:PatchProcess.BeginErrorReadLine()
+
+    return @{
+        RunId = $script:PatchRunId
+        Status = 'Running'
+        Action = $Action
+        TargetCount = $targets.Count
+        KB = $patch.KB
+        Title = $patch.Title
     }
 }
 
@@ -796,9 +942,56 @@ try {
                 }
                 continue
             }
+            if ($request.HttpMethod -eq 'POST' -and $request.Url.AbsolutePath -eq '/api/patch/catalog') {
+                if (($script:MigrationProcess -and -not $script:MigrationProcess.HasExited) -or
+                    ($script:PatchProcess -and -not $script:PatchProcess.HasExited)) {
+                    throw [System.InvalidOperationException]::new('Patch catalog refresh is unavailable while a migration or patch operation is running.')
+                }
+                $body = Read-WebRequestJson -Request $request
+                if (-not $body.Contains('Refresh') -or $body.Refresh -isnot [bool]) {
+                    throw [ArgumentException]::new('Refresh must be provided as a JSON boolean.')
+                }
+                $script:PatchCatalog = @(Get-MigrationSqlServerPatchCatalog -Refresh:$body.Refresh)
+                $script:PatchCatalogUpdatedAt = [DateTime]::UtcNow.ToString('o')
+                Send-WebJson -Response $response -StatusCode 200 -Value @{
+                    patches = $script:PatchCatalog
+                    updatedAt = $script:PatchCatalogUpdatedAt
+                    onlineRefresh = [bool]$body.Refresh
+                }
+                continue
+            }
+            if ($request.HttpMethod -eq 'POST' -and $request.Url.AbsolutePath -eq '/api/patch/assess') {
+                if (($script:MigrationProcess -and -not $script:MigrationProcess.HasExited) -or
+                    ($script:PatchProcess -and -not $script:PatchProcess.HasExited)) {
+                    throw [System.InvalidOperationException]::new('Patch assessment is unavailable while a migration or patch operation is running.')
+                }
+                $body = Read-WebRequestJson -Request $request
+                if (-not $body.Contains('KB') -or -not $body.Contains('Targets') -or $body.Targets -isnot [array]) {
+                    throw [ArgumentException]::new('KB and Targets are required.')
+                }
+                $kb = [string]$body.KB
+                $patch = Get-WebPatchCatalogRecord -KB $kb
+                $targets = @(ConvertTo-WebPatchTargets -Selections @($body.Targets))
+                $results = @($targets | ForEach-Object {
+                    $assessment = Get-MigrationSqlServerPatchAssessment -SqlInstance $_.SqlInstance -KB $kb
+                    $assessment | Add-Member -NotePropertyName Role -NotePropertyValue $_.Role -Force
+                    $assessment | Add-Member -NotePropertyName PairIndex -NotePropertyValue $_.PairIndex -Force
+                    $assessment
+                })
+                Send-WebJson -Response $response -StatusCode 200 -Value @{
+                    patch = $patch
+                    results = $results
+                    eligibleCount = @($results | Where-Object Status -eq 'Eligible').Count
+                    alreadyInstalledCount = @($results | Where-Object Status -eq 'AlreadyInstalled').Count
+                    blockedCount = @($results | Where-Object Status -ne 'Eligible' -and Status -ne 'AlreadyInstalled').Count
+                    assessedAt = [DateTime]::UtcNow.ToString('o')
+                }
+                continue
+            }
             if ($request.HttpMethod -eq 'POST' -and $request.Url.AbsolutePath -eq '/api/discover') {
-                if ($script:MigrationProcess -and -not $script:MigrationProcess.HasExited) {
-                    throw [System.InvalidOperationException]::new('Discovery is unavailable while a migration is running.')
+                if (($script:MigrationProcess -and -not $script:MigrationProcess.HasExited) -or
+                    ($script:PatchProcess -and -not $script:PatchProcess.HasExited)) {
+                    throw [System.InvalidOperationException]::new('Discovery is unavailable while a migration or SQL Server patch is running.')
                 }
                 $body = Read-WebRequestJson -Request $request
                 if (-not $body.Contains('Pair')) {
@@ -829,6 +1022,80 @@ try {
                     })
                 }
                 Send-WebJson -Response $response -StatusCode 200 -Value @{ databases = $results }
+                continue
+            }
+            if ($request.HttpMethod -eq 'POST' -and $request.Url.AbsolutePath -eq '/api/custom-sql') {
+                if ($script:PatchProcess -and -not $script:PatchProcess.HasExited) {
+                    throw [System.InvalidOperationException]::new('Custom SQL execution is unavailable while SQL Server patching is running.')
+                }
+                $body = Read-WebRequestJson -Request $request
+                if (-not $body.Contains('PairIndex') -or -not $body.Contains('ServerRole') -or -not $body.Contains('Query')) {
+                    throw [ArgumentException]::new('PairIndex, ServerRole, and Query are required.')
+                }
+                $pairIndex = [int]$body.PairIndex
+                $pair = Get-WebPair -Index $pairIndex
+                $role = [string]$body.ServerRole
+                if ($role -notin @('Source', 'Target')) {
+                    throw [ArgumentException]::new("ServerRole must be 'Source' or 'Target'.")
+                }
+                $sqlInstance = if ($role -eq 'Source') { [string]$pair.Source } else { [string]$pair.Target }
+                $database = if ($body.Contains('Database') -and -not [string]::IsNullOrWhiteSpace([string]$body.Database)) {
+                    [string]$body.Database
+                }
+                else {
+                    'master'
+                }
+                $query = [string]$body.Query
+                $startedAt = [DateTime]::UtcNow
+                $rows = @(Invoke-MigrationCustomSql -SqlInstance $sqlInstance -Database $database -Query $query)
+                $elapsedMilliseconds = [int](([DateTime]::UtcNow - $startedAt).TotalMilliseconds)
+                $columns = @()
+                if ($rows.Count -gt 0) {
+                    $columns = @($rows[0].PSObject.Properties.Name)
+                }
+                Send-WebJson -Response $response -StatusCode 200 -Value @{
+                    instance = $sqlInstance
+                    serverRole = $role
+                    database = $database
+                    rowCount = $rows.Count
+                    columns = $columns
+                    rows = @($rows)
+                    elapsedMilliseconds = $elapsedMilliseconds
+                }
+                continue
+            }
+            if ($request.HttpMethod -eq 'POST' -and $request.Url.AbsolutePath -eq '/api/patch/download') {
+                $body = Read-WebRequestJson -Request $request
+                try {
+                    $result = Start-WebSqlServerPatch -Body $body -Action Download
+                    Send-WebJson -Response $response -StatusCode 202 -Value $result
+                }
+                catch [System.InvalidOperationException] {
+                    Send-WebJson -Response $response -StatusCode 409 -Value @{ error = $_.Exception.Message }
+                }
+                continue
+            }
+            if ($request.HttpMethod -eq 'POST' -and $request.Url.AbsolutePath -eq '/api/patch') {
+                $body = Read-WebRequestJson -Request $request
+                try {
+                    $result = Start-WebSqlServerPatch -Body $body -Action Apply
+                    Send-WebJson -Response $response -StatusCode 202 -Value $result
+                }
+                catch [System.InvalidOperationException] {
+                    Send-WebJson -Response $response -StatusCode 409 -Value @{ error = $_.Exception.Message }
+                }
+                continue
+            }
+            if ($request.HttpMethod -eq 'GET' -and $request.Url.AbsolutePath -eq '/api/patch/status') {
+                $running = [bool]($script:PatchProcess -and -not $script:PatchProcess.HasExited)
+                $exitCode = if ($script:PatchProcess -and $script:PatchProcess.HasExited) { $script:PatchProcess.ExitCode } else { $null }
+                Send-WebJson -Response $response -StatusCode 200 -Value @{
+                    runId = $script:PatchRunId
+                    running = $running
+                    exitCode = $exitCode
+                    action = $script:PatchAction
+                    KB = $script:PatchKB
+                }
                 continue
             }
             if ($request.HttpMethod -eq 'POST' -and $request.Url.AbsolutePath -eq '/api/migrate') {

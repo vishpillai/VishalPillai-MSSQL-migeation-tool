@@ -221,6 +221,231 @@ Describe 'Schema-only configuration validation' {
     }
 }
 
+Describe 'Custom SQL execution helpers' {
+    It 'validates a custom SQL query before running it against the selected SQL instance' {
+        { Invoke-MigrationCustomSql -SqlInstance 'source-sql' -Database 'master' -Query '' } |
+            Should -Throw '*Custom T-SQL query cannot be empty*'
+
+        { Invoke-MigrationCustomSql -SqlInstance '' -Database 'master' -Query 'SELECT 1' } |
+            Should -Throw '*SqlInstance is required*'
+    }
+
+    It 'delegates to dbatools for the selected SQL instance and database' {
+        Import-Module dbatools -ErrorAction Stop
+        $expected = @([pscustomobject]@{ Result = 42 })
+        Mock Invoke-MigrationCustomSqlInternal -ModuleName DbMigration.Core {
+            $expected
+        }
+
+        $result = Invoke-MigrationCustomSql -SqlInstance 'target-sql' -Database 'tempdb' -Query 'SELECT 42 AS Result;'
+
+        $result | Should -HaveCount 1
+        $result[0].Result | Should -Be 42
+        Should -Invoke Invoke-MigrationCustomSqlInternal -ModuleName DbMigration.Core -Times 1 -Exactly -ParameterFilter {
+            $SqlInstance -eq 'target-sql' -and $Database -eq 'tempdb' -and $Query -eq 'SELECT 42 AS Result;'
+        }
+    }
+}
+
+Describe 'SQL Server patch helper' {
+    BeforeAll {
+        Import-Module dbatools -ErrorAction Stop
+        Import-Module (Join-Path $PSScriptRoot '..\src\DbMigration.Patching.psm1') -Force
+    }
+
+    It 'requires an existing local update repository before contacting SQL Server' {
+        { Invoke-MigrationSqlServerPatch -SqlInstance 'sql01\app' -UpdatePath (Join-Path $TestDrive 'missing') -KB '5104824' } |
+            Should -Throw '*update repository folder was not found*'
+    }
+
+    It 'targets the assessed instance and selected KB without rebooting by default' {
+        $repository = Join-Path $TestDrive 'updates'
+        $null = New-Item -ItemType Directory -Path $repository
+        Set-Content -LiteralPath (Join-Path $repository 'sqlserver2022-KB5104824-x64.exe') -Value 'test-package'
+        Mock Get-MigrationSqlServerPatchAssessment -ModuleName DbMigration.Patching {
+            [pscustomobject]@{
+                SqlInstance = 'sqlhost01\app'
+                ComputerName = 'SQLHOST01'
+                InstanceName = 'APP'
+                CurrentVersion = '16.0.1000.6'
+                PatchBuild = '16.0.4295'
+                Status = 'Eligible'
+            }
+        }
+        Mock Update-DbaInstance -ModuleName DbMigration.Patching { $null }
+
+        $result = Invoke-MigrationSqlServerPatch -SqlInstance 'sqlhost01\app' -UpdatePath $repository -KB '5104824'
+
+        $result.Status | Should -Be 'Completed'
+        $result.CurrentVersion | Should -Be '16.0.1000.6'
+        $result.KB | Should -Be '5104824'
+        Should -Invoke Update-DbaInstance -ModuleName DbMigration.Patching -Times 1 -Exactly -ParameterFilter {
+            @($ComputerName | ForEach-Object { $_.ComputerName }) -contains 'SQLHOST01' -and
+            $InstanceName -eq 'APP' -and $Path -contains $repository -and
+            $KB -eq '5104824' -and -not $Restart
+        }
+    }
+
+    It 'blocks application when the selected patch is not eligible' {
+        $repository = Join-Path $TestDrive 'blocked-updates'
+        $null = New-Item -ItemType Directory -Path $repository
+        Set-Content -LiteralPath (Join-Path $repository 'sqlserver2022-KB5104824-x64.exe') -Value 'test-package'
+        Mock Get-MigrationSqlServerPatchAssessment -ModuleName DbMigration.Patching {
+            [pscustomobject]@{
+                SqlInstance = 'sqlcluster01\prod'
+                ComputerName = 'SQLCLUSTER01'
+                InstanceName = 'PROD'
+                CurrentVersion = '16.0.1000.6'
+                PatchBuild = '16.0.4295'
+                Status = 'UnsupportedCluster'
+                Reason = 'Clustered instances require a cluster-aware patch procedure.'
+            }
+        }
+        Mock Update-DbaInstance -ModuleName DbMigration.Patching { $null }
+
+        { Invoke-MigrationSqlServerPatch -SqlInstance 'sqlcluster01\prod' -UpdatePath $repository -KB '5104824' } |
+            Should -Throw '*UnsupportedCluster*cluster-aware*'
+
+        Should -Invoke Update-DbaInstance -ModuleName DbMigration.Patching -Times 0 -Exactly
+    }
+
+    It 'restarts the Windows host only when explicitly requested' {
+        $repository = Join-Path $TestDrive 'restart-updates'
+        $null = New-Item -ItemType Directory -Path $repository
+        Set-Content -LiteralPath (Join-Path $repository 'sqlserver2022-KB5104824-x64.exe') -Value 'test-package'
+        Mock Get-MigrationSqlServerPatchAssessment -ModuleName DbMigration.Patching {
+            [pscustomobject]@{
+                SqlInstance = 'sqlhost01\app'
+                ComputerName = 'SQLHOST01'
+                InstanceName = 'APP'
+                CurrentVersion = '16.0.1000.6'
+                PatchBuild = '16.0.4295'
+                Status = 'Eligible'
+            }
+        }
+        Mock Update-DbaInstance -ModuleName DbMigration.Patching { $null }
+
+        Invoke-MigrationSqlServerPatch -SqlInstance 'sqlhost01\app' -UpdatePath $repository -KB '5104824' -Restart
+
+        Should -Invoke Update-DbaInstance -ModuleName DbMigration.Patching -Times 1 -Exactly -ParameterFilter {
+            $Restart -and $ComputerName.ComputerName -eq 'SQLHOST01' -and $KB -eq '5104824'
+        }
+    }
+
+    It 'marks a same-major higher build as eligible' {
+        Mock Get-MigrationSqlServerPatchByKB -ModuleName DbMigration.Patching {
+            [pscustomobject]@{ KB = '5104824'; MajorVersion = '2022'; ServicePack = 'RTM'; UpdateLevel = 'CU27'; BuildLevel = '16.0.4295'; Title = 'SQL Server 2022 CU27'; SupportedUntil = (Get-Date).AddYears(5).ToString('o') }
+        }
+        Mock Get-MigrationSqlServerPatchServerInfoInternal -ModuleName DbMigration.Patching {
+            [pscustomobject]@{ MachineName = 'SQLHOST01'; InstanceName = 'APP'; IsClustered = 0; ProductVersion = '16.0.1000.6' }
+        }
+        Mock Get-DbaBuild -ModuleName DbMigration.Patching {
+            [pscustomobject]@{ NameLevel = '2022'; SPLevel = 'RTM'; CULevel = 'RTM'; KBLevel = ''; BuildLevel = '16.0.1000'; SupportedUntil = (Get-Date).AddYears(5) }
+        }
+
+        $assessment = Get-MigrationSqlServerPatchAssessment -SqlInstance 'sqlhost01\app' -KB '5104824'
+
+        $assessment.Status | Should -Be 'Eligible'
+        $assessment.CurrentVersion | Should -Be '16.0.1000.6'
+        $assessment.PatchBuild | Should -Be '16.0.4295'
+    }
+
+    It 'marks the exact installed KB as already installed' {
+        Mock Get-MigrationSqlServerPatchByKB -ModuleName DbMigration.Patching {
+            [pscustomobject]@{ KB = '5104824'; MajorVersion = '2022'; ServicePack = 'RTM'; UpdateLevel = 'CU27'; BuildLevel = '16.0.4295'; Title = 'SQL Server 2022 CU27'; SupportedUntil = (Get-Date).AddYears(5).ToString('o') }
+        }
+        Mock Get-MigrationSqlServerPatchServerInfoInternal -ModuleName DbMigration.Patching {
+            [pscustomobject]@{ MachineName = 'SQLHOST01'; InstanceName = 'APP'; IsClustered = 0; ProductVersion = '16.0.4295.3' }
+        }
+        Mock Get-DbaBuild -ModuleName DbMigration.Patching {
+            [pscustomobject]@{ NameLevel = '2022'; SPLevel = 'RTM'; CULevel = 'CU27'; KBLevel = 'KB5104824'; BuildLevel = '16.0.4295'; SupportedUntil = (Get-Date).AddYears(5) }
+        }
+
+        (Get-MigrationSqlServerPatchAssessment -SqlInstance 'sqlhost01\app' -KB '5104824').Status | Should -Be 'AlreadyInstalled'
+    }
+
+    It 'allows a newer service-pack package on the same SQL Server major version' {
+        Mock Get-MigrationSqlServerPatchByKB -ModuleName DbMigration.Patching {
+            [pscustomobject]@{ KB = '5003279'; MajorVersion = '2016'; ServicePack = 'SP3'; UpdateLevel = 'Service Pack'; BuildLevel = '13.0.6300'; Title = 'SQL Server 2016 SP3'; SupportedUntil = (Get-Date).AddYears(2).ToString('o') }
+        }
+        Mock Get-MigrationSqlServerPatchServerInfoInternal -ModuleName DbMigration.Patching {
+            [pscustomobject]@{ MachineName = 'SQLHOST01'; InstanceName = 'APP'; IsClustered = 0; ProductVersion = '13.0.5888.11' }
+        }
+        Mock Get-DbaBuild -ModuleName DbMigration.Patching {
+            [pscustomobject]@{ NameLevel = '2016'; SPLevel = 'SP2'; CULevel = 'CU17'; KBLevel = 'KB5001092'; BuildLevel = '13.0.5888'; SupportedUntil = (Get-Date).AddYears(2) }
+        }
+
+        (Get-MigrationSqlServerPatchAssessment -SqlInstance 'sqlhost01\app' -KB '5003279').Status | Should -Be 'Eligible'
+    }
+
+    It 'blocks a patch for a different SQL Server major version' {
+        Mock Get-MigrationSqlServerPatchByKB -ModuleName DbMigration.Patching {
+            [pscustomobject]@{ KB = '5104824'; MajorVersion = '2022'; ServicePack = 'RTM'; UpdateLevel = 'CU27'; BuildLevel = '16.0.4295'; Title = 'SQL Server 2022 CU27'; SupportedUntil = (Get-Date).AddYears(5).ToString('o') }
+        }
+        Mock Get-MigrationSqlServerPatchServerInfoInternal -ModuleName DbMigration.Patching {
+            [pscustomobject]@{ MachineName = 'SQLHOST01'; InstanceName = 'APP'; IsClustered = 0; ProductVersion = '15.0.4430.1' }
+        }
+        Mock Get-DbaBuild -ModuleName DbMigration.Patching {
+            [pscustomobject]@{ NameLevel = '2019'; SPLevel = 'RTM'; CULevel = 'CU32'; KBLevel = 'KB5054833'; BuildLevel = '15.0.4430'; SupportedUntil = (Get-Date).AddYears(3) }
+        }
+
+        (Get-MigrationSqlServerPatchAssessment -SqlInstance 'sqlhost01\app' -KB '5104824').Status | Should -Be 'VersionMismatch'
+    }
+
+    It 'marks an older selected patch as superseded by the installed build' {
+        Mock Get-MigrationSqlServerPatchByKB -ModuleName DbMigration.Patching {
+            [pscustomobject]@{ KB = '5093420'; MajorVersion = '2022'; ServicePack = 'RTM'; UpdateLevel = 'CU26'; BuildLevel = '16.0.4265'; Title = 'SQL Server 2022 CU26'; SupportedUntil = (Get-Date).AddYears(5).ToString('o') }
+        }
+        Mock Get-MigrationSqlServerPatchServerInfoInternal -ModuleName DbMigration.Patching {
+            [pscustomobject]@{ MachineName = 'SQLHOST01'; InstanceName = 'APP'; IsClustered = 0; ProductVersion = '16.0.4295.3' }
+        }
+        Mock Get-DbaBuild -ModuleName DbMigration.Patching {
+            [pscustomobject]@{ NameLevel = '2022'; SPLevel = 'RTM'; CULevel = 'CU27'; KBLevel = 'KB5104824'; BuildLevel = '16.0.4295'; SupportedUntil = (Get-Date).AddYears(5) }
+        }
+
+        (Get-MigrationSqlServerPatchAssessment -SqlInstance 'sqlhost01\app' -KB '5093420').Status | Should -Be 'Superseded'
+    }
+
+    It 'refreshes and deduplicates catalog rows by SQL build and KB' {
+        Mock Update-DbaBuildReference -ModuleName DbMigration.Patching {}
+        Mock Get-DbaBuild -ModuleName DbMigration.Patching {
+            if ($MajorVersion -eq 'SQL2022' -and $ServicePack -eq 'RTM') {
+                if ($CumulativeUpdate -eq 'CU1') {
+                    [pscustomobject]@{ NameLevel = '2022'; SPLevel = 'RTM'; CULevel = 'CU1'; KBLevel = 'KB5100001'; Build = '16.0.1.1'; BuildLevel = '16.0.1'; ReleaseDate = Get-Date; SupportedUntil = (Get-Date).AddYears(5); MatchType = 'Exact' }
+                }
+                elseif ($CumulativeUpdate -in @('CU2', 'CU3', 'CU4')) {
+                    [pscustomobject]@{ NameLevel = '2022'; SPLevel = 'RTM'; CULevel = 'CU1 + GDR'; KBLevel = 'KB5100002'; Build = '16.0.2.1'; BuildLevel = '16.0.2'; ReleaseDate = (Get-Date).AddDays(1); SupportedUntil = (Get-Date).AddYears(5); MatchType = 'Exact' }
+                }
+            }
+        }
+
+        $catalog = @(Get-MigrationSqlServerPatchCatalog -Refresh)
+
+        @($catalog | Where-Object KB -eq '5100001').Count | Should -Be 1
+        @($catalog | Where-Object KB -eq '5100002').Count | Should -Be 1
+        Should -Invoke Update-DbaBuildReference -ModuleName DbMigration.Patching -Times 1 -Exactly
+    }
+
+    It 'downloads the selected KB to the chosen repository as x64' {
+        $repository = Join-Path $TestDrive 'downloaded-updates'
+        Mock Get-DbaBuild -ModuleName DbMigration.Patching {
+            [pscustomobject]@{ NameLevel = '2022'; SPLevel = 'RTM'; CULevel = 'CU27'; KBLevel = 'KB5104824'; Build = '16.0.4295.3'; BuildLevel = '16.0.4295'; ReleaseDate = Get-Date; SupportedUntil = (Get-Date).AddYears(5); MatchType = 'Exact' }
+        }
+        Mock Get-DbaKbUpdate -ModuleName DbMigration.Patching { [pscustomobject]@{ Link = 'https://catalog.example.invalid/package.exe' } }
+        Mock Save-DbaKbUpdate -ModuleName DbMigration.Patching {
+            Set-Content -LiteralPath (Join-Path $Path 'sqlserver2022-KB5104824-x64.exe') -Value 'mock package'
+        }
+
+        $download = Save-MigrationSqlServerPatch -KB '5104824' -Path $repository
+
+        $download.KB | Should -Be '5104824'
+        $download.Path | Should -Exist
+        Should -Invoke Save-DbaKbUpdate -ModuleName DbMigration.Patching -Times 1 -Exactly -ParameterFilter {
+            $Name -eq 'KB5104824' -and $Path -contains $repository -and $Architecture -eq 'x64'
+        }
+    }
+}
+
 Describe 'Migration state' {
     It 'records progress and reads it back for resume' {
         $path = Join-Path $TestDrive 'MigrationState.json'
@@ -293,14 +518,14 @@ Describe 'Migration progress events' {
         $eventFiles = @(Get-ChildItem -LiteralPath $progressPath -Filter '*.json' -File)
         $eventFiles.Count | Should -Be 1
         @(Get-ChildItem -LiteralPath $progressPath -Filter '*.tmp' -File).Count | Should -Be 0
-        $event = Get-Content -LiteralPath $eventFiles[0].FullName -Raw | ConvertFrom-Json
-        $event.Source | Should -Be 'source'
-        $event.Target | Should -Be 'target'
-        $event.Database | Should -Be 'appdb'
-        $event.Stage | Should -Be 'Restore'
-        $event.Status | Should -Be 'Started'
-        $event.Message | Should -Be 'Restore started.'
-        $event.PercentComplete | Should -Be 0
+        $progressEvent = Get-Content -LiteralPath $eventFiles[0].FullName -Raw | ConvertFrom-Json
+        $progressEvent.Source | Should -Be 'source'
+        $progressEvent.Target | Should -Be 'target'
+        $progressEvent.Database | Should -Be 'appdb'
+        $progressEvent.Stage | Should -Be 'Restore'
+        $progressEvent.Status | Should -Be 'Started'
+        $progressEvent.Message | Should -Be 'Restore started.'
+        $progressEvent.PercentComplete | Should -Be 0
         $planProgressPath = Join-Path $TestDrive 'plan-progress'
         Write-MigrationProgressEvent -ProgressPath $planProgressPath -Source '' -Target '' `
             -Stage Migration -Status Completed -Message 'Sequential migration run completed.'
@@ -321,9 +546,9 @@ Describe 'Migration progress events' {
 
         (Wait-MigrationControl -ControlPath $controlPath -ProgressPath $progressPath `
             -Source source -Target target -HonorStop) | Should -BeFalse
-        $event = Get-Content -LiteralPath (Get-ChildItem -LiteralPath $progressPath -Filter '*.json').FullName -Raw |
+        $progressEvent = Get-Content -LiteralPath (Get-ChildItem -LiteralPath $progressPath -Filter '*.json').FullName -Raw |
             ConvertFrom-Json
-        $event.Status | Should -Be 'Stopped'
+        $progressEvent.Status | Should -Be 'Stopped'
     }
 
     It 'waits while paused and resumes at the next checkpoint' {
@@ -401,6 +626,8 @@ Describe 'Application installation' {
 
         Test-Path -LiteralPath (Join-Path $installRoot 'Start-PortableDbMigrationWeb.ps1') | Should -BeTrue
         Test-Path -LiteralPath (Join-Path $installRoot 'Start-DbMigrationWeb.cmd') | Should -BeTrue
+        Test-Path -LiteralPath (Join-Path $installRoot 'Invoke-DbMigrationPatch.ps1') | Should -BeTrue
+        Test-Path -LiteralPath (Join-Path $installRoot 'src\DbMigration.Patching.psm1') | Should -BeTrue
         Test-Path -LiteralPath (Join-Path $installRoot 'appinfo.json') | Should -BeTrue
         Test-Path -LiteralPath (Join-Path $installRoot 'portable\auth') | Should -BeTrue
         Test-Path -LiteralPath (Join-Path $installRoot 'portable\logs') | Should -BeTrue
