@@ -1,0 +1,15 @@
+<Project Sdk="WixToolset.Sdk/5.0.0">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Package</OutputType>
+    <OutputName>DbMigrationTool</OutputName>
+    <PackageId>DbMigrationTool</PackageId>
+    <ProductCode>*</ProductCode>
+    <UpgradeCode>5D339A8D-CA1E-45D4-A266-4F0812FE5981</UpgradeCode>
+    <Version>1.0.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Product.wxs" />
+  </ItemGroup>
+</Project>

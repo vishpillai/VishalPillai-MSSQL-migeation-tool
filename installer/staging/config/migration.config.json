@@ -1,0 +1,27 @@
+{
+  "SourceTargets": [
+    {
+      "Source": "source",
+      "Target": "target",
+      "BackupPath": "\\\\backup-share\\sql-migrations\\sql2012"
+    },
+    {
+      "Source": "source",
+      "Target": "target",
+      "BackupPath": "\\\\backup-share\\sql-migrations\\sql2016"
+    },
+    {
+      "Source": "source",
+      "Target": "target",
+      "BackupPath": "\\\\backup-share\\sql-migrations\\sql2019"
+    }
+  ],
+  "ExcludeDatabases": [],
+  "ThrottleLimit": 4,
+  "BackupFileCount": 4,
+  "RestoreSpaceBufferPercent": 20,
+  "AllowTargetReplace": false,
+  "UpdateStatistics": true,
+  "OutputPath": ".\\reports",
+  "LinkedServersCsv": ".\\config\\LinkedServers.csv"
+}

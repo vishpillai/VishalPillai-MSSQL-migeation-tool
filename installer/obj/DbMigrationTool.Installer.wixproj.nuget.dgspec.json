@@ -1,0 +1,47 @@
+{
+  "format": 1,
+  "restore": {
+    "F:\\VishalPillai-MSSQL-migeation-tool\\installer\\DbMigrationTool.Installer.wixproj": {}
+  },
+  "projects": {
+    "F:\\VishalPillai-MSSQL-migeation-tool\\installer\\DbMigrationTool.Installer.wixproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "F:\\VishalPillai-MSSQL-migeation-tool\\installer\\DbMigrationTool.Installer.wixproj",
+        "projectName": "DbMigrationTool",
+        "projectPath": "F:\\VishalPillai-MSSQL-migeation-tool\\installer\\DbMigrationTool.Installer.wixproj",
+        "packagesPath": "C:\\Users\\vishal pillai\\.nuget\\packages\\",
+        "outputPath": "F:\\VishalPillai-MSSQL-migeation-tool\\installer\\obj\\",
+        "projectStyle": "PackageReference",
+        "UsingMicrosoftNETSdk": false,
+        "configFilePaths": [
+          "C:\\Users\\vishal pillai\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "framework": "native",
+            "targetAlias": "net8.0",
+            "projectReferences": {}
+          }
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "framework": "native",
+          "targetAlias": "net8.0"
+        }
+      }
+    }
+  }
+}

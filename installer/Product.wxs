@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Db Migration Tool" Manufacturer="Vishal Pillai" Version="1.0.0.0" UpgradeCode="5D339A8D-CA1E-45D4-A266-4F0812FE5981" Language="1033" Scope="perUser">
+    <MediaTemplate CompressionLevel="high" />
+    <Feature Id="MainFeature" Title="Db Migration Tool" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="AppStartMenuShortcut" />
+      <ComponentRef Id="AppDesktopShortcut" />
+    </Feature>
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="DbMigrationTool" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <StandardDirectory Id="DesktopFolder" />
+    <Component Id="AppStartMenuShortcut" Directory="ProgramMenuFolder" Guid="{2D9E0C4A-F9A1-4A55-B4F6-09D0CBF82E0D}">
+      <Shortcut Id="AppShortcut" Name="Db Migration Tool" Target="[INSTALLFOLDER]Start-DbMigrationWeb.cmd" WorkingDirectory="INSTALLFOLDER" />
+      <RegistryValue Root="HKCU" Key="Software\DbMigrationTool" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+    <Component Id="AppDesktopShortcut" Directory="DesktopFolder" Guid="{919DEE3A-6F4E-4EA8-A09B-0F8A356D82B2}">
+      <Shortcut Id="DesktopShortcut" Name="Db Migration Tool" Target="[INSTALLFOLDER]Start-DbMigrationWeb.cmd" WorkingDirectory="INSTALLFOLDER" />
+      <RegistryValue Root="HKCU" Key="Software\DbMigrationTool" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+  </Package>
+  <Fragment>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="cmp_root_CHANGELOG_md" Guid="{f6ddeae3-4ef9-47c1-88a7-085c1b8c940a}" Directory="INSTALLFOLDER">
+        <File Id="file_root_CHANGELOG_md" Source="CHANGELOG.md" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_CHANGELOG_md" Type="string" Value="CHANGELOG.md" KeyPath="yes" />
+      </Component>
+      <Directory Id="dir_root_config" Name="config">
+      <Component Id="cmp_root_config_LinkedServers_csv" Guid="{5226eebd-44dc-44e9-a06d-aa1173da8abf}" Directory="dir_root_config">
+        <File Id="file_root_config_LinkedServers_csv" Source="config/LinkedServers.csv" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_config_LinkedServers_csv" Type="string" Value="config/LinkedServers.csv" KeyPath="yes" />
+      </Component>
+      <Component Id="cmp_root_config_migration_config_json" Guid="{65f5c583-a52a-41b5-a2aa-0dd0e20005c2}" Directory="dir_root_config">
+        <File Id="file_root_config_migration_config_json" Source="config/migration.config.json" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_config_migration_config_json" Type="string" Value="config/migration.config.json" KeyPath="yes" />
+      </Component>
+      </Directory>
+      <Component Id="cmp_root_HOW_TO_USE_md" Guid="{1da84489-a079-4ebe-84ba-7ef933a45fa8}" Directory="INSTALLFOLDER">
+        <File Id="file_root_HOW_TO_USE_md" Source="HOW-TO-USE.md" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_HOW_TO_USE_md" Type="string" Value="HOW-TO-USE.md" KeyPath="yes" />
+      </Component>
+      <Component Id="cmp_root_Initialize_DbMigrationWebAuth_ps1" Guid="{b1c804d8-18f7-415c-a001-8e0e377eb30d}" Directory="INSTALLFOLDER">
+        <File Id="file_root_Initialize_DbMigrationWebAuth_ps1" Source="Initialize-DbMigrationWebAuth.ps1" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_Initialize_DbMigrationWebAuth_ps1" Type="string" Value="Initialize-DbMigrationWebAuth.ps1" KeyPath="yes" />
+      </Component>
+      <Component Id="cmp_root_Install_DbMigrationWeb_ps1" Guid="{7aee5f5a-35f4-464c-bc4b-9675ef6d13a4}" Directory="INSTALLFOLDER">
+        <File Id="file_root_Install_DbMigrationWeb_ps1" Source="Install-DbMigrationWeb.ps1" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_Install_DbMigrationWeb_ps1" Type="string" Value="Install-DbMigrationWeb.ps1" KeyPath="yes" />
+      </Component>
+      <Component Id="cmp_root_Invoke_DbMigration_ps1" Guid="{694bd61e-79f1-46f0-9bf6-bc4877c4af36}" Directory="INSTALLFOLDER">
+        <File Id="file_root_Invoke_DbMigration_ps1" Source="Invoke-DbMigration.ps1" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_Invoke_DbMigration_ps1" Type="string" Value="Invoke-DbMigration.ps1" KeyPath="yes" />
+      </Component>
+      <Component Id="cmp_root_Invoke_DbMigrationGui_ps1" Guid="{09b2b4fc-d860-4544-9522-4a7410c9b02e}" Directory="INSTALLFOLDER">
+        <File Id="file_root_Invoke_DbMigrationGui_ps1" Source="Invoke-DbMigrationGui.ps1" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_Invoke_DbMigrationGui_ps1" Type="string" Value="Invoke-DbMigrationGui.ps1" KeyPath="yes" />
+      </Component>
+      <Component Id="cmp_root_Invoke_DbMigrationWeb_ps1" Guid="{eda8270a-2f50-4cb6-bc58-1f8e6c16d3cd}" Directory="INSTALLFOLDER">
+        <File Id="file_root_Invoke_DbMigrationWeb_ps1" Source="Invoke-DbMigrationWeb.ps1" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_Invoke_DbMigrationWeb_ps1" Type="string" Value="Invoke-DbMigrationWeb.ps1" KeyPath="yes" />
+      </Component>
+      <Component Id="cmp_root_Invoke_DbMigrationWebPlan_ps1" Guid="{cb6352e8-9318-49db-992e-fc954fdeb32d}" Directory="INSTALLFOLDER">
+        <File Id="file_root_Invoke_DbMigrationWebPlan_ps1" Source="Invoke-DbMigrationWebPlan.ps1" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_Invoke_DbMigrationWebPlan_ps1" Type="string" Value="Invoke-DbMigrationWebPlan.ps1" KeyPath="yes" />
+      </Component>
+      <Component Id="cmp_root_MSSQL_1_code_workspace" Guid="{0ecdb4c0-94b6-40d3-81a4-a46191aeae03}" Directory="INSTALLFOLDER">
+        <File Id="file_root_MSSQL_1_code_workspace" Source="MSSQL-1.code-workspace" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_MSSQL_1_code_workspace" Type="string" Value="MSSQL-1.code-workspace" KeyPath="yes" />
+      </Component>
+      <Directory Id="dir_root_portable" Name="portable">
+      <Directory Id="dir_root_portable_auth" Name="auth">
+      <Component Id="cmp_root_portable_auth_auth_json" Guid="{373493e3-d191-415d-8330-0504398c6861}" Directory="dir_root_portable_auth">
+        <File Id="file_root_portable_auth_auth_json" Source="portable/auth/auth.json" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_portable_auth_auth_json" Type="string" Value="portable/auth/auth.json" KeyPath="yes" />
+      </Component>
+      </Directory>
+      <Directory Id="dir_root_portable_logs" Name="logs">
+      <Component Id="cmp_root_portable_logs_WebHost_20261007_221912_292_log" Guid="{b60be0eb-9d56-4216-be19-bd5fdcfb88a8}" Directory="dir_root_portable_logs">
+        <File Id="file_root_portable_logs_WebHost_20261007_221912_292_log" Source="portable/logs/WebHost-20261007-221912-292.log" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_portable_logs_WebHost_20261007_221912_292_log" Type="string" Value="portable/logs/WebHost-20261007-221912-292.log" KeyPath="yes" />
+      </Component>
+      <Component Id="cmp_root_portable_logs_WebHost_20261007_221958_991_log" Guid="{14da1ce6-43b0-4e2f-986e-1f5143a48795}" Directory="dir_root_portable_logs">
+        <File Id="file_root_portable_logs_WebHost_20261007_221958_991_log" Source="portable/logs/WebHost-20261007-221958-991.log" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_portable_logs_WebHost_20261007_221958_991_log" Type="string" Value="portable/logs/WebHost-20261007-221958-991.log" KeyPath="yes" />
+      </Component>
+      <Component Id="cmp_root_portable_logs_WebHost_20261007_222253_222_log" Guid="{c83febb9-0359-4d76-ab24-7866e08250f7}" Directory="dir_root_portable_logs">
+        <File Id="file_root_portable_logs_WebHost_20261007_222253_222_log" Source="portable/logs/WebHost-20261007-222253-222.log" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_portable_logs_WebHost_20261007_222253_222_log" Type="string" Value="portable/logs/WebHost-20261007-222253-222.log" KeyPath="yes" />
+      </Component>
+      <Component Id="cmp_root_portable_logs_WebHost_20261011_021010_953_log" Guid="{37eb710d-cf2b-4e2e-9361-216fdddcf413}" Directory="dir_root_portable_logs">
+        <File Id="file_root_portable_logs_WebHost_20261011_021010_953_log" Source="portable/logs/WebHost-20261011-021010-953.log" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_portable_logs_WebHost_20261011_021010_953_log" Type="string" Value="portable/logs/WebHost-20261011-021010-953.log" KeyPath="yes" />
+      </Component>
+      </Directory>
+      </Directory>
+      <Component Id="cmp_root_README_md" Guid="{9a3e434b-eb94-4853-a1d8-91168b1c4482}" Directory="INSTALLFOLDER">
+        <File Id="file_root_README_md" Source="README.md" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_README_md" Type="string" Value="README.md" KeyPath="yes" />
+      </Component>
+      <Component Id="cmp_root_Register_DbMigrationWebHttps_ps1" Guid="{2f0deefa-ebcb-4b57-9f9a-3f7de23bd2eb}" Directory="INSTALLFOLDER">
+        <File Id="file_root_Register_DbMigrationWebHttps_ps1" Source="Register-DbMigrationWebHttps.ps1" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_Register_DbMigrationWebHttps_ps1" Type="string" Value="Register-DbMigrationWebHttps.ps1" KeyPath="yes" />
+      </Component>
+      <Directory Id="dir_root_src" Name="src">
+      <Component Id="cmp_root_src_DbMigration_Core_psm1" Guid="{92e620cd-8e99-42a1-ab49-3fc91393c37d}" Directory="dir_root_src">
+        <File Id="file_root_src_DbMigration_Core_psm1" Source="src/DbMigration.Core.psm1" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_src_DbMigration_Core_psm1" Type="string" Value="src/DbMigration.Core.psm1" KeyPath="yes" />
+      </Component>
+      <Component Id="cmp_root_src_DbMigration_Discovery_psm1" Guid="{cded93a2-4013-4b74-8273-db4b4b32730b}" Directory="dir_root_src">
+        <File Id="file_root_src_DbMigration_Discovery_psm1" Source="src/DbMigration.Discovery.psm1" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_src_DbMigration_Discovery_psm1" Type="string" Value="src/DbMigration.Discovery.psm1" KeyPath="yes" />
+      </Component>
+      <Component Id="cmp_root_src_DbMigration_PostMigration_psm1" Guid="{a12c47ad-ca3b-4890-8040-662cb8d22ec8}" Directory="dir_root_src">
+        <File Id="file_root_src_DbMigration_PostMigration_psm1" Source="src/DbMigration.PostMigration.psm1" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_src_DbMigration_PostMigration_psm1" Type="string" Value="src/DbMigration.PostMigration.psm1" KeyPath="yes" />
+      </Component>
+      <Component Id="cmp_root_src_DbMigration_Transfer_psm1" Guid="{57ade782-4b5d-4652-a659-99c874c54a56}" Directory="dir_root_src">
+        <File Id="file_root_src_DbMigration_Transfer_psm1" Source="src/DbMigration.Transfer.psm1" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_src_DbMigration_Transfer_psm1" Type="string" Value="src/DbMigration.Transfer.psm1" KeyPath="yes" />
+      </Component>
+      <Component Id="cmp_root_src_DbMigration_WebAuth_psm1" Guid="{a53ba207-fd03-45ab-9b80-90fd683a4eeb}" Directory="dir_root_src">
+        <File Id="file_root_src_DbMigration_WebAuth_psm1" Source="src/DbMigration.WebAuth.psm1" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_src_DbMigration_WebAuth_psm1" Type="string" Value="src/DbMigration.WebAuth.psm1" KeyPath="yes" />
+      </Component>
+      </Directory>
+      <Component Id="cmp_root_Start_DbMigrationWeb_cmd" Guid="{b4afca9e-1df6-45fa-b404-11f03dab76ac}" Directory="INSTALLFOLDER">
+        <File Id="file_root_Start_DbMigrationWeb_cmd" Source="Start-DbMigrationWeb.cmd" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_Start_DbMigrationWeb_cmd" Type="string" Value="Start-DbMigrationWeb.cmd" KeyPath="yes" />
+      </Component>
+      <Component Id="cmp_root_Start_PortableDbMigrationWeb_ps1" Guid="{aa709a32-65b6-4f35-b8ff-d0a328839b43}" Directory="INSTALLFOLDER">
+        <File Id="file_root_Start_PortableDbMigrationWeb_ps1" Source="Start-PortableDbMigrationWeb.ps1" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_Start_PortableDbMigrationWeb_ps1" Type="string" Value="Start-PortableDbMigrationWeb.ps1" KeyPath="yes" />
+      </Component>
+      <Directory Id="dir_root_tests" Name="tests">
+      <Component Id="cmp_root_tests_DbMigration_Core_Tests_ps1" Guid="{3c8e4f1f-1d33-4292-a36a-7164bfb980eb}" Directory="dir_root_tests">
+        <File Id="file_root_tests_DbMigration_Core_Tests_ps1" Source="tests/DbMigration.Core.Tests.ps1" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_tests_DbMigration_Core_Tests_ps1" Type="string" Value="tests/DbMigration.Core.Tests.ps1" KeyPath="yes" />
+      </Component>
+      </Directory>
+      <Component Id="cmp_root_Uninstall_DbMigrationWeb_ps1" Guid="{7962832a-4078-4dcc-9713-d9ba8b6b9d88}" Directory="INSTALLFOLDER">
+        <File Id="file_root_Uninstall_DbMigrationWeb_ps1" Source="Uninstall-DbMigrationWeb.ps1" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_Uninstall_DbMigrationWeb_ps1" Type="string" Value="Uninstall-DbMigrationWeb.ps1" KeyPath="yes" />
+      </Component>
+      <Component Id="cmp_root_VERSION" Guid="{70fd7b88-b178-486c-9b0b-ba307b938701}" Directory="INSTALLFOLDER">
+        <File Id="file_root_VERSION" Source="VERSION" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_VERSION" Type="string" Value="VERSION" KeyPath="yes" />
+      </Component>
+      <Directory Id="dir_root_web" Name="web">
+      <Component Id="cmp_root_web_index_html" Guid="{1ccd2b83-afc9-4295-a2bb-2ac3d3001f8b}" Directory="dir_root_web">
+        <File Id="file_root_web_index_html" Source="web/index.html" />
+        <RegistryValue Root="HKCU" Key="Software\DbMigrationTool\AppFiles" Name="cmp_root_web_index_html" Type="string" Value="web/index.html" KeyPath="yes" />
+      </Component>
+      </Directory>
+    </DirectoryRef>
+    <ComponentGroup Id="AppFiles">
+      <ComponentRef Id="cmp_root_CHANGELOG_md" />
+      <ComponentRef Id="cmp_root_config_LinkedServers_csv" />
+      <ComponentRef Id="cmp_root_config_migration_config_json" />
+      <ComponentRef Id="cmp_root_HOW_TO_USE_md" />
+      <ComponentRef Id="cmp_root_Initialize_DbMigrationWebAuth_ps1" />
+      <ComponentRef Id="cmp_root_Install_DbMigrationWeb_ps1" />
+      <ComponentRef Id="cmp_root_Invoke_DbMigration_ps1" />
+      <ComponentRef Id="cmp_root_Invoke_DbMigrationGui_ps1" />
+      <ComponentRef Id="cmp_root_Invoke_DbMigrationWeb_ps1" />
+      <ComponentRef Id="cmp_root_Invoke_DbMigrationWebPlan_ps1" />
+      <ComponentRef Id="cmp_root_MSSQL_1_code_workspace" />
+      <ComponentRef Id="cmp_root_portable_auth_auth_json" />
+      <ComponentRef Id="cmp_root_portable_logs_WebHost_20261007_221912_292_log" />
+      <ComponentRef Id="cmp_root_portable_logs_WebHost_20261007_221958_991_log" />
+      <ComponentRef Id="cmp_root_portable_logs_WebHost_20261007_222253_222_log" />
+      <ComponentRef Id="cmp_root_portable_logs_WebHost_20261011_021010_953_log" />
+      <ComponentRef Id="cmp_root_README_md" />
+      <ComponentRef Id="cmp_root_Register_DbMigrationWebHttps_ps1" />
+      <ComponentRef Id="cmp_root_src_DbMigration_Core_psm1" />
+      <ComponentRef Id="cmp_root_src_DbMigration_Discovery_psm1" />
+      <ComponentRef Id="cmp_root_src_DbMigration_PostMigration_psm1" />
+      <ComponentRef Id="cmp_root_src_DbMigration_Transfer_psm1" />
+      <ComponentRef Id="cmp_root_src_DbMigration_WebAuth_psm1" />
+      <ComponentRef Id="cmp_root_Start_DbMigrationWeb_cmd" />
+      <ComponentRef Id="cmp_root_Start_PortableDbMigrationWeb_ps1" />
+      <ComponentRef Id="cmp_root_tests_DbMigration_Core_Tests_ps1" />
+      <ComponentRef Id="cmp_root_Uninstall_DbMigrationWeb_ps1" />
+      <ComponentRef Id="cmp_root_VERSION" />
+      <ComponentRef Id="cmp_root_web_index_html" />
+    </ComponentGroup>
+  </Fragment>
+</Wix>

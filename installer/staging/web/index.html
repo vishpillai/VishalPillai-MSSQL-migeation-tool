@@ -1,0 +1,664 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Database Migration</title>
+  <style>
+    :root { color-scheme: light; font-family: "Segoe UI", Arial, sans-serif; color: #17212b; background: #f2f5f8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    header { padding: 18px 28px; background: #143b5d; color: white; display: flex; justify-content: space-between; align-items: center; }
+    header h1 { margin: 0; font-size: 21px; font-weight: 600; }
+    main { max-width: 1180px; margin: 24px auto; padding: 0 18px; }
+    .card { background: white; border: 1px solid #d9e1e8; border-radius: 9px; padding: 20px; margin-bottom: 18px; box-shadow: 0 2px 6px #17354b0c; }
+    h2 { margin: 0 0 16px; font-size: 17px; }
+    label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    input, select, button { font: inherit; }
+    input[type="text"], input[type="password"], select { width: 100%; padding: 10px; border: 1px solid #aebdca; border-radius: 5px; }
+    button { cursor: pointer; border: 0; border-radius: 5px; background: #1769aa; color: white; padding: 10px 15px; font-weight: 600; }
+    button.secondary { background: #e8eef3; color: #20394d; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    .row { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+    .grow { flex: 1; min-width: 230px; }
+    .pair-card { border: 1px solid #d9e1e8; border-radius: 7px; padding: 14px; margin: 14px 0; }
+    .pair-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; align-items: end; }
+    .pair-grid label { margin: 0; }
+    .options { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px 18px; margin-top: 14px; }
+    .check { display: flex; align-items: center; gap: 8px; font-weight: 400; margin: 0; }
+    .check input { width: 16px; height: 16px; }
+    .muted { color: #5d6e7c; font-size: 13px; }
+    .error { color: #a52121; margin-top: 10px; white-space: pre-wrap; }
+    .hidden { display: none !important; }
+    .table-wrap { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { padding: 10px 8px; border-bottom: 1px solid #e2e8ed; text-align: left; }
+    th { color: #4d5d69; font-weight: 600; }
+    td.nowrap { white-space: nowrap; }
+    .target-exists { color: #a45b00; font-weight: 600; }
+    .status-line { display: flex; flex-wrap: wrap; gap: 10px 24px; align-items: center; }
+    .pill { border-radius: 99px; background: #edf2f6; padding: 5px 10px; font-size: 12px; }
+    .progress { height: 9px; border-radius: 9px; background: #e4ebf0; overflow: hidden; margin: 12px 0; }
+    .progress > div { height: 100%; width: 0; background: #178151; transition: width .2s; }
+    .progress-label { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: #5d6e7c; }
+    .progress.step-progress > div { background: #1769aa; }
+    #events { height: 260px; overflow: auto; background: #101b24; color: #e3edf5; padding: 10px 12px; border-radius: 5px; font: 12px/1.55 Consolas, monospace; }
+    .event { border-bottom: 1px solid #293641; padding: 3px 0; overflow-wrap: anywhere; }
+    .event.failed { color: #ff9b9b; }
+    .event.completed { color: #a7e6bd; }
+    .event.skipped { color: #ffd58b; }
+    #login-card { max-width: 420px; margin: 70px auto; }
+    @media (max-width: 620px) { header { padding: 15px; } main { margin-top: 14px; padding: 0 10px; } .card { padding: 15px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Database Migration</h1>
+    <button id="logout" class="secondary hidden">Sign out</button>
+  </header>
+  <main>
+    <section id="login-card" class="card">
+      <h2>Sign in</h2>
+      <form id="login-form">
+        <label for="username">Application username</label>
+        <input id="username" type="text" autocomplete="username" required maxlength="128">
+        <label for="password" style="margin-top:12px">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+        <button style="margin-top:16px;width:100%">Sign in</button>
+        <div id="login-error" class="error" role="alert"></div>
+      </form>
+    </section>
+
+    <div id="application" class="hidden">
+      <section class="card">
+        <h2>Configure up to 3 source / target pairs</h2>
+        <p class="muted">Pairs run one after another. Databases within each pair run sequentially; each database is validated, migrated, post-checked, and its temporary backup deleted before the next begins.</p>
+        <label class="check"><input id="remember-settings" type="checkbox" checked> Remember source, target, and shared backup paths in this browser</label>
+        <div id="pair-list"></div>
+        <div class="row">
+          <button id="add-pair" class="secondary" type="button">Add another instance pair</button>
+        </div>
+        <div id="discovery-error" class="error" role="alert"></div>
+        <div class="options" id="options">
+          <label class="check"><input type="checkbox" data-option="MigrateLogins"> SQL logins (excluding sa)</label>
+          <label class="check"><input type="checkbox" data-option="MigrateAgentJobs"> SQL Agent jobs (disabled on target)</label>
+          <label class="check"><input type="checkbox" data-option="MigrateAgentOperators"> SQL Agent operators</label>
+          <label class="check"><input type="checkbox" data-option="ConfigureLinkedServers"> Configure linked servers</label>
+          <label class="check"><input type="checkbox" data-option="SkipLinkedServers" checked> Skip linked servers for this run</label>
+          <label class="check"><input type="checkbox" data-option="RepairOrphanUsers"> Repair orphaned users</label>
+          <label class="check"><input type="checkbox" data-option="UpdateStatistics"> Update statistics</label>
+        </div>
+        <div class="row" style="margin-top:18px">
+          <button id="start" disabled>Start migration</button>
+          <span id="migration-error" class="error" role="alert"></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Live migration monitor</h2>
+        <div class="status-line">
+          <span id="run-status" class="pill">No migration running</span>
+          <span id="active-stage" class="muted">Waiting for a migration.</span>
+          <span id="outcome-counts" class="muted"></span>
+        </div>
+        <div class="progress"><div id="progress-bar"></div></div>
+        <div class="progress-label"><span id="step-progress-label">No active step.</span><strong id="step-progress-percent">0%</strong></div>
+        <div class="progress step-progress"><div id="step-progress-bar"></div></div>
+        <div class="row" style="margin:8px 0 12px">
+          <button id="pause-run" class="secondary" type="button" disabled>Pause</button>
+          <button id="resume-run" class="secondary" type="button" disabled>Resume</button>
+          <button id="stop-run" class="secondary" type="button" disabled>Stop safely</button>
+        </div>
+        <div id="events" aria-live="polite"></div>
+      </section>
+    </div>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let pairs = [];
+    let optionDefaults = {};
+    const settingsKey = "dbMigrationWebSettings.v2";
+    let eventCursor = 0;
+    let migrationActive = false;
+    let controlAction = "Run";
+    let controlPaused = false;
+    let alertedFailure = false;
+    let pollInProgress = false;
+    let selectedDatabaseTotal = 0;
+    const outcomes = new Map();
+
+    async function api(path, body) {
+      const response = await fetch(path, {
+        method: body === undefined ? "GET" : "POST",
+        headers: body === undefined ? {} : { "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        credentials: "same-origin",
+        cache: "no-store"
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || `Request failed (${response.status})`);
+      return payload;
+    }
+
+    function showApplication(authenticated) {
+      $("login-card").classList.toggle("hidden", authenticated);
+      $("application").classList.toggle("hidden", !authenticated);
+      $("logout").classList.toggle("hidden", !authenticated);
+      if (authenticated) initializePairs();
+    }
+
+    function saveSettings() {
+      try {
+        if ($("remember-settings").checked) {
+          localStorage.setItem(settingsKey, JSON.stringify({
+            remember: true,
+            pairs: pairs.map(({ Source, Target, BackupPath, MigrationMode }) =>
+              ({ Source, Target, BackupPath, MigrationMode }))
+          }));
+        } else {
+          localStorage.removeItem(settingsKey);
+        }
+      } catch (error) {
+        $("discovery-error").textContent = `Could not save browser settings: ${error.message}`;
+      }
+    }
+
+    async function initializePairs() {
+      try {
+        const result = await api("/api/defaults");
+        optionDefaults = result.options || {};
+        for (const checkbox of document.querySelectorAll("[data-option]")) {
+          checkbox.checked = optionDefaults[checkbox.dataset.option] !== false;
+        }
+        const skipLinkedServers = document.querySelector('[data-option="SkipLinkedServers"]');
+        const configureLinkedServers = document.querySelector('[data-option="ConfigureLinkedServers"]');
+        skipLinkedServers.checked = true;
+        configureLinkedServers.checked = false;
+        configureLinkedServers.disabled = true;
+        let saved = null;
+        try { saved = JSON.parse(localStorage.getItem(settingsKey) || "null"); } catch (_) {}
+        $("remember-settings").checked = saved?.remember === true;
+        pairs = (saved?.remember && Array.isArray(saved.pairs) ? saved.pairs : result.pairs)
+          .slice(0, result.maxPairs)
+          .map((item) => ({
+            Source: item.Source || "",
+            Target: item.Target || "",
+            BackupPath: item.BackupPath || "",
+            MigrationMode: item.MigrationMode === "SchemaOnly" ? "SchemaOnly" : "Full",
+            databases: null
+          }));
+        if (!pairs.length) pairs = [{ Source: "", Target: "", BackupPath: "", MigrationMode: "Full", databases: null }];
+        renderPairs();
+      } catch (error) {
+        $("discovery-error").textContent = error.message;
+      }
+    }
+
+    function updateStartButton() {
+      const selectedCount = pairs.reduce((sum, pair) =>
+        sum + (pair.databases || []).filter((database) => database.Selected).length, 0);
+      const hasServerWork = ["MigrateLogins", "MigrateAgentJobs", "MigrateAgentOperators", "ConfigureLinkedServers"]
+        .some((key) => document.querySelector(`[data-option="${key}"]`)?.checked);
+      $("start").disabled = migrationActive || (!selectedCount && !hasServerWork);
+    }
+
+    function renderPairs() {
+      const list = $("pair-list");
+      list.replaceChildren();
+      pairs.forEach((pair, index) => {
+        const card = document.createElement("section");
+        card.className = "pair-card";
+        const heading = document.createElement("h3");
+        heading.textContent = `Instance pair ${index + 1}`;
+        card.append(heading);
+        const grid = document.createElement("div");
+        grid.className = "pair-grid";
+        for (const [key, caption] of [
+          ["Source", "Source SQL instance"],
+          ["Target", "Target SQL instance"],
+          ["BackupPath", "Shared backup directory (UNC path)"]
+        ]) {
+          const wrapper = document.createElement("div");
+          const label = document.createElement("label");
+          label.textContent = caption;
+          label.htmlFor = `pair-${index}-${key}`;
+          const input = document.createElement("input");
+          input.type = "text";
+          input.id = label.htmlFor;
+          input.dataset.pairIndex = index;
+          input.dataset.field = key;
+          input.value = pair[key];
+          input.placeholder = key === "BackupPath" ? "\\\\backup-server\\sql-migrations\\instance" :
+            (key === "Source" ? "source-sql-instance" : "target-sql-instance");
+          wrapper.append(label, input);
+          grid.append(wrapper);
+        }
+        const modeWrapper = document.createElement("div");
+        const modeLabel = document.createElement("label");
+        modeLabel.textContent = "Migration mode";
+        modeLabel.htmlFor = `pair-${index}-MigrationMode`;
+        const modeSelect = document.createElement("select");
+        modeSelect.id = modeLabel.htmlFor;
+        modeSelect.dataset.pairIndex = index;
+        modeSelect.dataset.mode = "MigrationMode";
+        for (const [value, text] of [
+          ["Full", "Full database (schema + data)"],
+          ["SchemaOnly", "Schema only (no table data)"]
+        ]) {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = text;
+          modeSelect.append(option);
+        }
+        modeSelect.value = pair.MigrationMode || "Full";
+        modeWrapper.append(modeLabel, modeSelect);
+        grid.append(modeWrapper);
+        const actions = document.createElement("div");
+        actions.className = "row";
+        actions.style.marginTop = "10px";
+        const discover = document.createElement("button");
+        discover.type = "button";
+        discover.dataset.action = "discover";
+        discover.dataset.pairIndex = index;
+        discover.textContent = pair.databases ? "Refresh discovery" : "Discover databases";
+        actions.append(discover);
+        if (pairs.length > 1) {
+          const remove = document.createElement("button");
+          remove.type = "button";
+          remove.className = "secondary";
+          remove.dataset.action = "remove";
+          remove.dataset.pairIndex = index;
+          remove.textContent = "Remove pair";
+          actions.append(remove);
+        }
+        const summary = document.createElement("div");
+        summary.className = "muted";
+        summary.style.marginTop = "10px";
+        summary.textContent = pair.summary || "Enter the SQL instances and shared backup path, then discover.";
+        summary.dataset.summary = index;
+        card.append(grid, actions, summary);
+        if (pair.databases) card.append(renderDatabaseTable(pair, index));
+        list.append(card);
+      });
+      $("add-pair").disabled = pairs.length >= 3 || migrationActive;
+      updateStartButton();
+    }
+
+    function renderDatabaseTable(pair, pairIndex) {
+      const wrap = document.createElement("div");
+      wrap.className = "table-wrap";
+      wrap.style.marginTop = "10px";
+      const table = document.createElement("table");
+      const head = document.createElement("thead");
+      const sizeHeading = pair.MigrationMode === "SchemaOnly" ? "Source size (not copied)" : "Size";
+      head.innerHTML = `<tr><th>Migrate</th><th>Database</th><th>${sizeHeading}</th><th>Compatibility</th><th>Target</th><th>Overwrite existing</th></tr>`;
+      const body = document.createElement("tbody");
+      if (!pair.databases.length) {
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 6;
+        cell.className = "muted";
+        cell.textContent = "No eligible databases were discovered.";
+        row.append(cell);
+        body.append(row);
+      }
+      pair.databases.forEach((database, databaseIndex) => {
+        const row = document.createElement("tr");
+        const selectCell = document.createElement("td");
+        const select = document.createElement("input");
+        select.type = "checkbox";
+        select.checked = database.Selected;
+        select.dataset.pairIndex = pairIndex;
+        select.dataset.databaseIndex = databaseIndex;
+        select.dataset.action = "select-database";
+        selectCell.append(select);
+        const name = document.createElement("td");
+        name.textContent = database.Database;
+        const size = document.createElement("td");
+        size.textContent = `${database.SizeGB} GB`;
+        const compatibility = document.createElement("td");
+        compatibility.textContent = database.CompatibilityLevel || "";
+        const target = document.createElement("td");
+        target.textContent = database.TargetExists ? "Already exists" : "Not present";
+        if (database.TargetExists) target.className = "target-exists";
+        const overwriteCell = document.createElement("td");
+        if (database.TargetExists) {
+          const label = document.createElement("label");
+          label.className = "check";
+          const overwrite = document.createElement("input");
+          overwrite.type = "checkbox";
+          overwrite.checked = database.Overwrite;
+          overwrite.dataset.pairIndex = pairIndex;
+          overwrite.dataset.databaseIndex = databaseIndex;
+          overwrite.dataset.action = "overwrite-database";
+          label.append(overwrite, document.createTextNode(" Replace it"));
+          overwriteCell.append(label);
+        } else overwriteCell.textContent = "—";
+        row.append(selectCell, name, size, compatibility, target, overwriteCell);
+        body.append(row);
+      });
+      table.append(head, body);
+      wrap.append(table);
+      return wrap;
+    }
+
+    async function discoverPair(index) {
+      const pair = pairs[index];
+      pair.Source = document.querySelector(`[data-pair-index="${index}"][data-field="Source"]`).value.trim();
+      pair.Target = document.querySelector(`[data-pair-index="${index}"][data-field="Target"]`).value.trim();
+      pair.BackupPath = document.querySelector(`[data-pair-index="${index}"][data-field="BackupPath"]`).value.trim();
+      pair.databases = null;
+      $("discovery-error").textContent = "";
+      pair.summary = "Connecting to SQL Server and collecting inventory…";
+      renderPairs();
+      saveSettings();
+      const button = document.querySelector(`[data-action="discover"][data-pair-index="${index}"]`);
+      button.disabled = true;
+      try {
+        const result = await api("/api/discover", { Pair: { Source: pair.Source, Target: pair.Target, BackupPath: pair.BackupPath, MigrationMode: pair.MigrationMode } });
+        pair.databases = result.databases.map((database) => ({ ...database, Selected: true, Overwrite: false }));
+        const counts = pair.databases[0] || {};
+        pair.summary = `${pair.databases.length} database(s) · ${counts.SourceLoginCount || 0} logins · ${counts.SourceLinkedServerCount || 0} linked servers · ${counts.SourceAgentJobCount || 0} Agent jobs`;
+      } catch (error) {
+        pair.databases = null;
+        pair.summary = `Discovery failed: ${error.message}`;
+      } finally {
+        renderPairs();
+      }
+    }
+
+    $("pair-list").addEventListener("input", (event) => {
+      const input = event.target.closest("[data-field]");
+      if (!input) return;
+      const pair = pairs[Number(input.dataset.pairIndex)];
+      pair[input.dataset.field] = input.value;
+      pair.databases = null;
+      pair.summary = "Settings changed; run discovery again.";
+      const card = input.closest(".pair-card");
+      const summary = card.querySelector("[data-summary]");
+      if (summary) summary.textContent = pair.summary;
+      const table = card.querySelector(".table-wrap");
+      if (table) table.remove();
+      const discoverButton = card.querySelector('[data-action="discover"]');
+      if (discoverButton) discoverButton.textContent = "Discover databases";
+      saveSettings();
+      updateStartButton();
+    });
+
+    $("pair-list").addEventListener("click", async (event) => {
+      const button = event.target.closest("button[data-action]");
+      if (!button) return;
+      const index = Number(button.dataset.pairIndex);
+      if (button.dataset.action === "discover") await discoverPair(index);
+      if (button.dataset.action === "remove") {
+        pairs.splice(index, 1);
+        renderPairs();
+        saveSettings();
+      }
+    });
+
+    $("pair-list").addEventListener("change", (event) => {
+      const target = event.target;
+      if (target.matches("[data-mode]")) {
+        const pairIndex = Number(target.dataset.pairIndex);
+        const pair = pairs[pairIndex];
+        pair.MigrationMode = target.value;
+        pair.databases = null;
+        pair.summary = "Migration mode changed; run discovery again.";
+        const card = target.closest(".pair-card");
+        const summary = card.querySelector("[data-summary]");
+        if (summary) summary.textContent = pair.summary;
+        const table = card.querySelector(".table-wrap");
+        if (table) table.remove();
+        saveSettings();
+        renderPairs();
+        return;
+      }
+      const pairIndex = Number(target.dataset.pairIndex);
+      const databaseIndex = Number(target.dataset.databaseIndex);
+      if (target.dataset.action === "select-database") pairs[pairIndex].databases[databaseIndex].Selected = target.checked;
+      if (target.dataset.action === "overwrite-database") pairs[pairIndex].databases[databaseIndex].Overwrite = target.checked;
+      updateStartButton();
+    });
+
+    $("add-pair").addEventListener("click", () => {
+      if (pairs.length >= 3) return;
+      pairs.push({ Source: "", Target: "", BackupPath: pairs[0]?.BackupPath || "", MigrationMode: "Full", databases: null });
+      renderPairs();
+      saveSettings();
+    });
+
+    $("remember-settings").addEventListener("change", saveSettings);
+    document.querySelectorAll("[data-option]").forEach((checkbox) =>
+      checkbox.addEventListener("change", () => {
+        if (checkbox.dataset.option === "SkipLinkedServers") {
+          const linkedServers = document.querySelector('[data-option="ConfigureLinkedServers"]');
+          if (checkbox.checked) linkedServers.checked = false;
+          linkedServers.disabled = checkbox.checked;
+        }
+        updateStartButton();
+      }));
+
+    function setRunControlsLocked(locked) {
+      for (const control of document.querySelectorAll("#pair-list input, #pair-list select, #pair-list button, [data-option], #remember-settings, #add-pair")) {
+        control.disabled = locked;
+      }
+      $("add-pair").disabled = locked || pairs.length >= 3;
+      updateStartButton();
+      updateControlButtons();
+    }
+
+    function updateControlButtons() {
+      const paused = controlAction === "Pause";
+      const stopping = controlAction === "Stop";
+      $("pause-run").disabled = !migrationActive || paused || stopping;
+      $("resume-run").disabled = !migrationActive || !paused || stopping;
+      $("stop-run").disabled = !migrationActive || stopping;
+    }
+
+    async function sendRunControl(action) {
+      try {
+        const result = await api("/api/control", { Action: action });
+        controlAction = result.action;
+        if (action === "Pause") $("run-status").textContent = "Pausing at next safe boundary…";
+        if (action === "Pause") controlPaused = false;
+        if (action === "Resume") {
+          controlPaused = false;
+          $("run-status").textContent = "Resuming…";
+        }
+        if (action === "Stop") $("run-status").textContent = "Stopping after current database…";
+        updateControlButtons();
+      } catch (error) {
+        $("migration-error").textContent = error.message;
+      }
+    }
+
+    $("pause-run").addEventListener("click", () => sendRunControl("Pause"));
+    $("resume-run").addEventListener("click", () => sendRunControl("Resume"));
+    $("stop-run").addEventListener("click", () => {
+      if (confirm("Stop at the next safe boundary? The current database or server-object stage will finish first.")) {
+        sendRunControl("Stop");
+      }
+    });
+
+    $("login-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      $("login-error").textContent = "";
+      try {
+        await api("/api/login", { Username: $("username").value, Password: $("password").value });
+        $("password").value = "";
+        showApplication(true);
+      } catch (error) {
+        $("login-error").textContent = error.message;
+      }
+    });
+
+    $("logout").addEventListener("click", async () => {
+      try { await api("/api/logout", {}); } finally { showApplication(false); }
+    });
+
+    $("start").addEventListener("click", async () => {
+      $("migration-error").textContent = "";
+      const planPairs = pairs.filter((pair) => pair.databases).map((pair) => ({
+        Source: pair.Source,
+        Target: pair.Target,
+        BackupPath: pair.BackupPath,
+        MigrationMode: pair.MigrationMode || "Full",
+        Databases: pair.databases.filter((database) => database.Selected).map((database) => ({
+          Database: database.Database,
+          Overwrite: database.Overwrite
+        }))
+      }));
+      const selectedCount = planPairs.reduce((sum, pair) => sum + pair.Databases.length, 0);
+      const overwriteList = planPairs.flatMap((pair) => pair.Databases
+        .filter((database) => database.Overwrite)
+        .map((database) => `${pair.Source} → ${pair.Target}: ${database.Database}`));
+      const options = Object.fromEntries([...document.querySelectorAll("[data-option]")]
+        .map((checkbox) => [checkbox.dataset.option, checkbox.checked]));
+      if (options.SkipLinkedServers) options.ConfigureLinkedServers = false;
+      const hasServerActions = ["MigrateLogins", "MigrateAgentJobs", "MigrateAgentOperators", "ConfigureLinkedServers"]
+        .some((key) => options[key]);
+      if (!selectedCount && !hasServerActions) {
+        $("migration-error").textContent = "Select at least one database or server-level migration option, and discover each pair first.";
+        return;
+      }
+      if (overwriteList.length && !confirm(`These target databases will be replaced:\n\n${overwriteList.join("\n")}\n\nContinue?`)) return;
+      const pairSummary = planPairs.map((pair) =>
+        `${pair.Source} → ${pair.Target} (${pair.Databases.length} database(s); ${pair.MigrationMode === "SchemaOnly" ? "SCHEMA ONLY, NO TABLE DATA" : "full database"})`)
+        .join("\n");
+      if (!confirm(`Run pairs and databases sequentially in this order?\n\n${pairSummary}\n\nSchema-only mode replaces an existing target only when its per-database overwrite box is checked. It creates an empty schema copy and does not migrate table data. Linked servers are controlled separately by the server-object option.`)) return;
+      $("start").disabled = true;
+      try {
+        const result = await api("/api/migrate", {
+          Pairs: planPairs,
+          Options: options
+        });
+        eventCursor = 0;
+        outcomes.clear();
+        selectedDatabaseTotal = selectedCount;
+        alertedFailure = false;
+        migrationActive = true;
+        controlAction = "Run";
+        controlPaused = false;
+        $("run-status").textContent = `Running · ${result.RunId}`;
+        $("active-stage").textContent = `Sequential run across ${result.Pairs.length} pair(s)`;
+        $("events").replaceChildren();
+        $("progress-bar").style.width = "0%";
+        $("step-progress-bar").style.width = "0%";
+        $("step-progress-percent").textContent = "0%";
+        $("step-progress-label").textContent = "Waiting for first step.";
+        updateOutcomes(selectedCount);
+        setRunControlsLocked(true);
+      } catch (error) {
+        $("migration-error").textContent = error.message;
+        setRunControlsLocked(false);
+      }
+    });
+
+    function appendEvent(item) {
+      const line = document.createElement("div");
+      line.className = `event ${String(item.Status || "").toLowerCase()}`;
+      const time = new Date(item.Timestamp).toLocaleTimeString();
+      const database = item.Database && item.Database !== "*" ? `${item.Database} / ` : "";
+      line.textContent = `[${time}] [${item.Status}] ${database}${item.Stage}: ${item.Message || ""}`;
+      $("events").append(line);
+      $("events").scrollTop = $("events").scrollHeight;
+      if (item.Stage === "DatabaseOutcome" && item.Database) {
+        outcomes.set(`${item.Source}\u0000${item.Target}\u0000${item.Database}`, item.Status);
+        updateOutcomes(selectedDatabaseTotal);
+      }
+      if (["Started", "InProgress"].includes(item.Status)) {
+        $("active-stage").textContent = `${database}${item.Stage}`;
+      }
+      if (!["Migration", "RunControl"].includes(item.Stage) && item.Database !== "*") {
+        const percent = Number.isInteger(item.PercentComplete) ? item.PercentComplete : null;
+        $("step-progress-label").textContent = `${database}${item.Stage} · ${item.Status}`;
+        $("step-progress-percent").textContent = percent === null ? "—" : `${percent}%`;
+        if (percent !== null) $("step-progress-bar").style.width = `${percent}%`;
+      }
+      if (item.Stage === "RunControl") {
+        if (item.Status === "Paused") {
+          controlAction = "Pause";
+          controlPaused = true;
+          $("run-status").textContent = "Paused";
+        } else if (item.Status === "InProgress") {
+          if (item.Message === "Migration resumed.") {
+            controlAction = "Resume";
+            controlPaused = false;
+            $("run-status").textContent = `Running · ${item.Message}`;
+          } else {
+            $("run-status").textContent = item.Message;
+          }
+        } else if (item.Status === "Stopped") {
+          controlAction = "Stop";
+          $("run-status").textContent = "Stopping after current database…";
+        }
+        updateControlButtons();
+      }
+      if (item.Status === "Failed" && !alertedFailure) {
+        alertedFailure = true;
+        alert(`Migration error${database ? ` for ${database}` : ""}:\n${item.Message || item.Stage}`);
+      }
+      if (item.Stage === "Migration" && ["Completed", "Failed", "Stopped"].includes(item.Status)) {
+        migrationActive = false;
+        controlAction = item.Status;
+        $("run-status").textContent = item.Status;
+        $("start").disabled = false;
+        setRunControlsLocked(false);
+      }
+    }
+
+    function updateOutcomes(total) {
+      const values = [...outcomes.values()];
+      const completed = values.filter((value) => value === "Completed").length;
+      const skipped = values.filter((value) => value === "Skipped").length;
+      const failed = values.filter((value) => value === "Failed").length;
+      const resolved = completed + skipped + failed;
+      $("outcome-counts").textContent = `Databases: ${resolved}/${total} resolved · ${completed} completed · ${skipped} skipped · ${failed} failed · ${Math.max(0, total - resolved)} pending`;
+      $("progress-bar").style.width = `${total ? Math.min(100, resolved * 100 / total) : 0}%`;
+    }
+
+    async function pollMigration() {
+      if (pollInProgress || $("application").classList.contains("hidden")) return;
+      pollInProgress = true;
+      try {
+        const status = await api("/api/status");
+        if (status.runId) {
+          migrationActive = status.running;
+          controlAction = status.controlAction || "Run";
+          if (status.running) {
+            $("run-status").textContent = controlAction === "Pause" ? (controlPaused ? "Paused" : `Pausing · ${status.runId}`) :
+              controlAction === "Stop" ? `Stopping · ${status.runId}` : `Running · ${status.runId}`;
+            $("start").disabled = true;
+          } else if (status.exitCode !== null && $("run-status").textContent.startsWith("Running")) {
+            $("run-status").textContent = status.exitCode === 0 ? "Completed" : `Exited with code ${status.exitCode}`;
+            $("active-stage").textContent = "Migration process ended.";
+            setRunControlsLocked(false);
+          }
+          updateControlButtons();
+        }
+        const result = await api(`/api/events?after=${eventCursor}`);
+        for (const item of result.events) {
+          appendEvent(item);
+          eventCursor = Math.max(eventCursor, Number(item.Id));
+        }
+      } catch (error) {
+        if (error.message.includes("Authentication required")) showApplication(false);
+      } finally {
+        pollInProgress = false;
+      }
+    }
+
+    async function initialize() {
+      try {
+        const session = await api("/api/session");
+        showApplication(session.authenticated);
+      } catch (_) {
+        showApplication(false);
+      }
+    }
+    initialize();
+    setInterval(pollMigration, 1000);
+  </script>
+</body>
+</html>
